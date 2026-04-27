@@ -26,6 +26,9 @@ require 'rspec/rails'
 #
 Rails.root.glob('spec/support/**/*.rb').sort_by(&:to_s).each { |f| require f }
 
+# ActiveJob のマッチャ（have_enqueued_job 等）を使うために :test アダプタにする
+ActiveJob::Base.queue_adapter = :test
+
 # Ensures that the test database schema matches the current schema file.
 # If there are pending migrations it will invoke `db:test:prepare` to
 # recreate the test database by loading the schema.

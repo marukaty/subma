@@ -1,0 +1,53 @@
+<% content_for :title, "CSV取り込み履歴 - SubMa" %>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">CSV 取り込み履歴</h1>
+    <p class="text-sm text-gray-500 mt-1"><%= @csv_imports.size %> 件</p>
+  </div>
+  <%= link_to "+ CSVをアップロード", new_csv_import_path,
+        class: "px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700" %>
+</div>
+
+<% if @csv_imports.empty? %>
+  <div class="bg-white rounded-2xl shadow-sm p-16 text-center text-gray-400">
+    <p class="mb-4">まだ CSV を取り込んでいません</p>
+    <%= link_to "最初のCSVを取り込む →", new_csv_import_path,
+          class: "text-blue-600 hover:underline font-medium" %>
+  </div>
+<% else %>
+  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+        <tr>
+          <th class="text-left px-4 py-3">ファイル名</th>
+          <th class="text-left px-4 py-3">フォーマット</th>
+          <th class="text-right px-4 py-3">取引数</th>
+          <th class="text-right px-4 py-3">サブスク判定</th>
+          <th class="text-left px-4 py-3">ステータス</th>
+          <th class="text-left px-4 py-3">取り込み日時</th>
+          <th class="text-right px-4 py-3">操作</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% @csv_imports.each do |ci| %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 font-medium text-gray-800"><%= ci.filename %></td>
+            <td class="px-4 py-3 text-gray-600"><%= ci.format %></td>
+            <td class="px-4 py-3 text-right text-gray-600"><%= ci.original_row_count || "—" %></td>
+            <td class="px-4 py-3 text-right text-gray-800"><%= ci.matched_count || "—" %></td>
+            <td class="px-4 py-3">
+              <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= csv_status_badge_class(ci.status) %>">
+                <%= t_csv_status(ci.status) %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-gray-500 text-xs"><%= ci.created_at.strftime("%Y/%m/%d %H:%M") %></td>
+            <td class="px-4 py-3 text-right">
+              <%= link_to "詳細", csv_import_path(ci), class: "text-blue-600 hover:underline" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
