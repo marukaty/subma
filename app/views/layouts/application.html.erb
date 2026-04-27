@@ -36,6 +36,8 @@
                     class: "text-sm font-medium #{current_page?(dashboard_path) ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'}" %>
               <%= link_to "サブスク一覧", subscriptions_path,
                     class: "text-sm font-medium #{controller_name == 'subscriptions' ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'}" %>
+              <%= link_to "設定", settings_path,
+                    class: "text-sm font-medium #{controller_name == 'settings' ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'}" %>
               <a id="sign-out" href="#" class="text-sm font-medium text-gray-600 hover:text-red-600">ログアウト</a>
             </nav>
           </div>

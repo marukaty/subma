@@ -60,3 +60,5 @@ gem "secure_headers", "~> 7.2"
 gem "lograge", "~> 0.14.0"
 
 gem "dotenv-rails", "~> 3.2", groups: [ :development, :test ]
+
+gem "chartkick", "~> 5.2"

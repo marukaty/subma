@@ -55,9 +55,11 @@ export default class extends Controller {
     const tpl = this.templates.find((t) => String(t.id) === String(id))
     if (!tpl) return
 
-    if (this.hasServiceNameTarget && !this.serviceNameTarget.value) this.serviceNameTarget.value = tpl.service_name
-    if (this.hasAmountTarget && !this.amountTarget.value && tpl.default_amount) this.amountTarget.value = tpl.default_amount
+    // テンプレートが選択されたら毎回フォームの該当項目を上書きする
+    // （ユーザーが手で書き換えた値も新しいテンプレートで置き換わる）
+    if (this.hasServiceNameTarget) this.serviceNameTarget.value = tpl.service_name || ""
+    if (this.hasAmountTarget) this.amountTarget.value = tpl.default_amount ?? ""
     if (this.hasBillingCycleTarget && tpl.default_billing_cycle) this.billingCycleTarget.value = tpl.default_billing_cycle
-    if (this.hasCategoryTarget && !this.categoryTarget.value && tpl.default_category) this.categoryTarget.value = tpl.default_category
+    if (this.hasCategoryTarget) this.categoryTarget.value = tpl.default_category || ""
   }
 }
