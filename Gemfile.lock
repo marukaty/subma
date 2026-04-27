@@ -279,6 +279,8 @@ GEM
       erb
       psych (>= 4.0.0)
       tsort
+    redis-client (0.28.0)
+      connection_pool
     regexp_parser (2.12.0)
     reline (0.6.3)
       io-console (~> 0.5)
@@ -344,6 +346,12 @@ GEM
       rexml (~> 3.2, >= 3.2.5)
       rubyzip (>= 1.2.2, < 4.0)
       websocket (~> 1.0)
+    sidekiq (8.1.3)
+      connection_pool (>= 3.0.0)
+      json (>= 2.16.0)
+      logger (>= 1.7.0)
+      rack (>= 3.2.0)
+      redis-client (>= 0.26.0)
     sshkit (1.25.0)
       base64
       logger
@@ -422,6 +430,7 @@ DEPENDENCIES
   rubocop-rails-omakase
   secure_headers (~> 7.2)
   selenium-webdriver (~> 4.43)
+  sidekiq (~> 8.1)
   tailwindcss-rails
   thruster
   tzinfo-data
