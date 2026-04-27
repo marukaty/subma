@@ -1,0 +1,67 @@
+<% content_for :title, "サブスク一覧 - SubMa" %>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">サブスク一覧</h1>
+    <p class="text-sm text-gray-500 mt-1"><%= @subscriptions.count %> 件登録</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="flex border border-gray-300 rounded-lg overflow-hidden text-sm bg-white">
+      <%= link_to "テーブル", subscriptions_path(view: "table"),
+            class: "px-3 py-1.5 #{@view_mode == 'table' ? 'bg-gray-100 text-gray-800 font-medium' : 'text-gray-500 hover:bg-gray-50'}" %>
+      <%= link_to "カード", subscriptions_path(view: "card"),
+            class: "px-3 py-1.5 border-l border-gray-300 #{@view_mode == 'card' ? 'bg-gray-100 text-gray-800 font-medium' : 'text-gray-500 hover:bg-gray-50'}" %>
+    </div>
+    <%= link_to "+ 新規登録", new_subscription_path,
+          class: "px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700" %>
+  </div>
+</div>
+
+<% if @subscriptions.empty? %>
+  <div class="bg-white rounded-2xl shadow-sm p-16 text-center text-gray-400">
+    <p class="mb-4">まだサブスクが登録されていません</p>
+    <%= link_to "最初のサブスクを登録する →", new_subscription_path,
+          class: "text-blue-600 hover:underline font-medium" %>
+  </div>
+<% elsif @view_mode == "card" %>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <% @subscriptions.each do |sub| %>
+      <%= render "card", subscription: sub %>
+    <% end %>
+  </div>
+<% else %>
+  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+        <tr>
+          <th class="text-left px-4 py-3">サービス</th>
+          <th class="text-left px-4 py-3">カテゴリ</th>
+          <th class="text-right px-4 py-3">料金</th>
+          <th class="text-left px-4 py-3">サイクル</th>
+          <th class="text-left px-4 py-3">次回引落</th>
+          <th class="text-left px-4 py-3">ステータス</th>
+          <th class="text-right px-4 py-3">操作</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% @subscriptions.each do |sub| %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 font-medium text-gray-800"><%= sub.service_name %></td>
+            <td class="px-4 py-3 text-gray-600"><%= sub.category %></td>
+            <td class="px-4 py-3 text-right text-gray-800"><%= number_to_currency(sub.amount, unit: sub.currency + " ") %></td>
+            <td class="px-4 py-3 text-gray-600"><%= t_billing_cycle(sub.billing_cycle) %></td>
+            <td class="px-4 py-3 text-gray-600"><%= sub.next_billing_date&.strftime("%Y/%m/%d") || "—" %></td>
+            <td class="px-4 py-3">
+              <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= status_badge_class(sub.status) %>">
+                <%= t_status(sub.status) %>
+              </span>
+            </td>
+            <td class="px-4 py-3 text-right">
+              <%= render "actions", subscription: sub %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

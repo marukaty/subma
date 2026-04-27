@@ -1,0 +1,26 @@
+<div class="flex items-center justify-end gap-3 text-xs">
+  <div class="flex items-center gap-3">
+    <%= link_to "編集", edit_subscription_path(subscription), class: "text-blue-600 hover:underline" %>
+
+    <% if subscription.status_active? %>
+      <%= button_to "一時停止", pause_subscription_path(subscription), method: :patch,
+            class: "text-yellow-600 hover:underline bg-transparent border-0 p-0 cursor-pointer",
+            data: { turbo_confirm: "「#{subscription.service_name}」を一時停止しますか？" } %>
+      <%= button_to "解約", cancel_subscription_path(subscription), method: :patch,
+            class: "text-gray-500 hover:underline bg-transparent border-0 p-0 cursor-pointer",
+            data: { turbo_confirm: "「#{subscription.service_name}」を解約済みにしますか？" } %>
+    <% elsif subscription.status_paused? %>
+      <%= button_to "再開", resume_subscription_path(subscription), method: :patch,
+            class: "text-green-600 hover:underline bg-transparent border-0 p-0 cursor-pointer" %>
+      <%= button_to "解約", cancel_subscription_path(subscription), method: :patch,
+            class: "text-gray-500 hover:underline bg-transparent border-0 p-0 cursor-pointer",
+            data: { turbo_confirm: "「#{subscription.service_name}」を解約済みにしますか？" } %>
+    <% end %>
+  </div>
+
+  <span class="h-4 w-px bg-gray-200" aria-hidden="true"></span>
+
+  <%= button_to "削除", subscription_path(subscription), method: :delete,
+        class: "px-2.5 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50 cursor-pointer",
+        data: { turbo_confirm: "「#{subscription.service_name}」を完全に削除しますか？（取り消せません）" } %>
+</div>
