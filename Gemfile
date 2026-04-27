@@ -66,3 +66,5 @@ gem "chartkick", "~> 5.2"
 gem "csv", "~> 3.3"
 
 gem "sidekiq", "~> 8.1"
+
+gem "anthropic", "~> 1.36"

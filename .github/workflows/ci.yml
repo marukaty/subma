@@ -85,6 +85,7 @@ jobs:
       FIREBASE_API_KEY: dummy
       FIREBASE_AUTH_DOMAIN: dummy
       FIREBASE_APP_ID: dummy
+      ANTHROPIC_API_KEY: dummy-for-tests
 
     steps:
       - name: Checkout code
