@@ -1,0 +1,104 @@
+<%= form_with(model: subscription, local: true,
+              data: {
+                controller: "template-picker",
+                template_picker_url_value: service_templates_path(format: :json)
+              },
+              class: "space-y-4") do |f| %>
+  <% if subscription.errors.any? %>
+    <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+      <p class="font-medium mb-1"><%= subscription.errors.count %> 件のエラー:</p>
+      <ul class="list-disc list-inside">
+        <% subscription.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <% if subscription.new_record? %>
+    <div>
+      <label for="template_picker" class="block text-sm font-medium text-gray-700 mb-1">
+        テンプレートから選ぶ（任意）
+      </label>
+      <select id="template_picker"
+              data-template-picker-target="select"
+              data-action="change->template-picker#apply"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+      </select>
+      <p class="text-xs text-gray-500 mt-1">テンプレートを選ぶと、サービス名・料金・カテゴリが自動入力されます</p>
+    </div>
+    <hr class="border-gray-200">
+  <% end %>
+
+  <div>
+    <%= f.label :service_name, "サービス名", class: "block text-sm font-medium text-gray-700 mb-1" %>
+    <%= f.text_field :service_name, required: true,
+          data: { template_picker_target: "serviceName" },
+          class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <%= f.label :amount, "料金", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.number_field :amount, step: 0.01, required: true,
+            data: { template_picker_target: "amount" },
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+    </div>
+    <div>
+      <%= f.label :currency, "通貨", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.text_field :currency, maxlength: 3,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm uppercase" %>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <%= f.label :billing_cycle, "課金サイクル", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.select :billing_cycle,
+            Subscription.billing_cycles.keys.map { |k| [ t_billing_cycle(k), k ] },
+            {},
+            data: { template_picker_target: "billingCycle" },
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" %>
+    </div>
+    <div>
+      <%= f.label :next_billing_date, "次回引落日", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.date_field :next_billing_date,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <%= f.label :category, "カテゴリ", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.text_field :category,
+            data: { template_picker_target: "category" },
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+    </div>
+    <div>
+      <%= f.label :payment_method, "支払い方法", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.text_field :payment_method, placeholder: "例: 楽天カード",
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+    </div>
+  </div>
+
+  <div>
+    <%= f.label :status, "ステータス", class: "block text-sm font-medium text-gray-700 mb-1" %>
+    <%= f.select :status,
+          Subscription.statuses.keys.map { |k| [ t_status(k), k ] },
+          {},
+          class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" %>
+  </div>
+
+  <div>
+    <%= f.label :memo, "メモ（任意）", class: "block text-sm font-medium text-gray-700 mb-1" %>
+    <%= f.text_area :memo, rows: 3,
+          class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+  </div>
+
+  <div class="flex justify-end gap-3 pt-2">
+    <%= link_to "キャンセル", subscriptions_path,
+          class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900" %>
+    <%= f.submit (subscription.new_record? ? "登録する" : "更新する"),
+          class: "px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700" %>
+  </div>
+<% end %>
