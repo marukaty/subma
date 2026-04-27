@@ -21,6 +21,15 @@
     </p>
   <% end %>
 
+  <div class="text-xs text-gray-500 space-y-0.5">
+    <% if subscription.started_at %>
+      <p>契約開始: <%= subscription.started_at.strftime("%Y/%m/%d") %></p>
+    <% end %>
+    <% if subscription.cancelled_at %>
+      <p>解約日: <%= subscription.cancelled_at.strftime("%Y/%m/%d") %></p>
+    <% end %>
+  </div>
+
   <% if subscription.payment_method.present? %>
     <p class="text-xs text-gray-400"><%= subscription.payment_method %></p>
   <% end %>
