@@ -1,0 +1,27 @@
+<% content_for :title, "ログイン - SubMa" %>
+
+<div class="min-h-screen flex items-center justify-center w-full">
+  <div class="max-w-md w-full bg-white rounded-2xl shadow-sm p-8">
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">SubMa</h1>
+      <p class="text-sm text-gray-500 mt-1">Subscription Mapping</p>
+    </div>
+
+    <p class="text-gray-600 text-sm mb-6 text-center">
+      Google アカウントでログインしてください
+    </p>
+
+    <button id="sign-in-google" type="button"
+            class="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+      <svg class="w-5 h-5" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 5.1 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.4-.4-3.5z"/>
+        <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 5.1 29.3 3 24 3 16.3 3 9.6 7.3 6.3 14.7z"/>
+        <path fill="#4CAF50" d="M24 45c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.5 2.3-7.2 2.3-5.2 0-9.6-3.3-11.3-8L6.2 33.5C9.5 40.8 16.2 45 24 45z"/>
+        <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.2 5.2c-.4.3 6.7-4.9 6.7-14.9 0-1.2-.1-2.4-.4-3.5z"/>
+      </svg>
+      <span class="text-sm font-medium text-gray-700">Google でログイン</span>
+    </button>
+
+    <p id="auth-error" class="text-sm text-red-600 mt-4 text-center"></p>
+  </div>
+</div>

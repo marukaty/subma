@@ -1,45 +1,82 @@
 # AI 利用ガイドライン
 
-> **本ファイルは Phase 0 の雛形です。本格整備は Phase 1 で行います。**
-
 ## 適用範囲
 
 このガイドラインは、SubMa の開発・運用において以下の AI 利用すべてに適用される:
 
-- Anthropic Claude API（本番アプリ内のサブスク自動抽出・診断機能）
-- Claude Code CLI / Claude Desktop による開発支援
-- claude.ai チャットによる設計相談・コードレビュー
+1. **本番アプリ内**: Anthropic Claude API（サブスク自動抽出・診断）
+2. **開発支援**: Claude Code CLI / Claude Desktop / claude.ai チャット
 
-## 大原則（Phase 1 で詳細化）
+## 大原則
 
 ### 1. 機密情報をプロンプトに含めない
-- API キー、パスワード、本番 DB 認証情報を AI に送らない
-- 環境変数は Secret Manager 経由のみ、コード直書き禁止
 
-### 2. CSV データの取扱
+絶対に Claude に送ってはいけないもの:
+
+- API キー、パスワード、JWT トークン、Firebase Admin 秘密鍵
+- 本番 DB の認証情報
+- ユーザー識別子（user_id, firebase_uid, メールアドレス）
+- クレジットカード番号・口座番号・電話番号・住所
+
+環境変数は **Secret Manager 経由のみ**、コードに直書き禁止。
+
+### 2. CSV データの取扱（最重要 / NFR-S-10）
+
+#### 開発時
 - **本物のユーザー CSV を Claude / Claude Code に渡さない**
-- 開発中も常にダミーデータを使う
-- 本番アプリ内で Claude API に CSV データを送る際は、`AiClassifier#mask_pii` で PII をマスクする（NFR-S-10）
+- 検証用には常に **ダミー CSV** を `spec/fixtures/csv/` に置いて使う
+- 「このサンプル CSV のパース動作を確認したい」という場合も、本物のクレカ明細はダミー化してから
 
-### 3. PII マスキングの責務
-- `AiClassifier#mask_pii` の責務を勝手に削らない・簡略化しない
-- カード番号末尾、口座番号、電話番号などの数値列は `XXXX` 等で置換
+#### 本番アプリ内（`AiClassifier`）
+- Claude API に送る前に必ず `AiClassifier#mask_pii` を通す
+- マスキング規則:
+  - `description` 内の 4 桁以上の数値列 → `XXXX` に置換（カード番号末尾、口座番号、電話番号）
+  - `user_id`, `firebase_uid`, `email` は送信ペイロードから除外
+- `mask_pii` の責務を**勝手に削減・簡略化しない**。変更時は必ず ADR を起こす（ADR-0005 参照予定）
 
-### 4. リポジトリ管理ルール
-- AI 生成コードのコミットメッセージに `[ai-assisted]` タグを付ける
-- 使用モデル（Sonnet / Opus）を `development-log.md` に記録
+### 3. AI 出力の検証
 
-### 5. AI 出力の検証
 - AI 判定（サブスク抽出・診断）は **あくまで提案** として扱う
 - ユーザーがレビュー画面で必ず確認・修正できる UI を提供する
-- AI のハルシネーションを前提にした設計
+- AI のハルシネーション（不確実な事実を断定的に出力する現象）を前提にした設計
+- 重要な判定（例: 重複検知）は信頼度（confidence）も保存し、低い場合は UI で強調
+
+### 4. AI 生成コードの管理
+
+- AI 生成コードのコミットメッセージに `[ai-assisted]` タグを付ける（例: 本コミットメッセージ末尾）
+- 使用モデル（Sonnet / Opus）を `development-log.md` に記録
+- レビューせずに大きな AI 生成コードをマージしない（個人開発でも自分で読む）
+
+### 5. リポジトリでの取扱
+
+- Claude Code セッションログをリポジトリにコミットしない
+- `.env`, `*.key`, Service Account JSON は `.gitignore` で除外（既に対応済み）
 
 ## 使用モデル
 
-- **本番アプリ内**: `claude-sonnet-4-20250514`（コスト・速度のバランス）
-- **開発支援**: 主に Sonnet、複雑な設計判断時のみ Opus
+| 用途 | モデル | 理由 |
+|---|---|---|
+| 本番アプリ内（CSV 分類・診断） | `claude-sonnet-4-20250514` | コスト・速度のバランス、構造化出力（JSON）の安定性 |
+| 開発支援（通常実装） | Sonnet | 速度重視 |
+| 開発支援（複雑な設計判断） | Opus | 推論力重視 |
+
+## コスト制約
+
+- Claude API は月数千円程度を許容（要件定義書 §7.4）
+- Tier 1（規則ベース）/ Tier 2（パターン検出）でフィルタしてから Tier 3（Claude API）に送り、API 呼び出しを最小化
+- 月額予算アラートを GCP / Anthropic Console で設定（Phase 4）
+
+## 開発時の操作チェックリスト
+
+Claude Code で何か実装してもらう前に確認:
+
+- [ ] プロンプトに本番データが含まれていないか
+- [ ] テストデータはダミーか
+- [ ] 機密情報（キー・パスワード・JWT）を貼っていないか
+- [ ] AI が触れるファイルに秘密情報が含まれていないか
 
 ## 参照
 
 - 要件定義書 §6.1 NFR-S-08, NFR-S-10
-- 設計書 §3.2 AI Classifier（Tier 3）
+- 設計書 §3.2 AI Classifier（Tier 3）, §5.4 Claude Code 機密情報の取扱
+- SECURITY.md

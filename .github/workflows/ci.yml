@@ -50,3 +50,54 @@ jobs:
       - name: Lint code for consistent style
         run: bin/rubocop -f github
 
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: subma_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      RAILS_ENV: test
+      DB_HOST: 127.0.0.1
+      REDIS_URL: redis://127.0.0.1:6379/0
+      # Firebase 設定値はテスト時にダミーで OK（実際の検証はモックされる）
+      FIREBASE_PROJECT_ID: subma-test
+      FIREBASE_API_KEY: dummy
+      FIREBASE_AUTH_DOMAIN: dummy
+      FIREBASE_APP_ID: dummy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Setup database
+        run: bin/rails db:prepare
+
+      - name: Run RSpec
+        run: bin/rspec
+
