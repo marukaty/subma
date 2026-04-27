@@ -102,6 +102,7 @@ GEM
     concurrent-ruby (1.3.6)
     connection_pool (3.0.2)
     crass (1.0.6)
+    csv (3.3.5)
     date (3.5.1)
     debug (1.11.1)
       irb (~> 1.10)
@@ -403,6 +404,7 @@ DEPENDENCIES
   bundler-audit
   capybara (~> 3.40)
   chartkick (~> 5.2)
+  csv (~> 3.3)
   debug
   dotenv-rails (~> 3.2)
   image_processing (~> 1.2)

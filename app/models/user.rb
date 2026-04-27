@@ -1,6 +1,8 @@
 class User < ApplicationRecord
   has_many :subscriptions, dependent: :destroy
   has_many :audit_logs, dependent: :nullify
+  has_many :csv_imports, dependent: :destroy
+  has_many :transactions, dependent: :destroy
 
   validates :firebase_uid, presence: true, uniqueness: true
   validates :email, presence: true
