@@ -1,0 +1,80 @@
+# SubMa プロジェクト固有 ルール
+
+このファイルは **グローバル `~/.claude/CLAUDE.md` のルールを SubMa プロジェクト内では意図的に上書き** するものです。
+
+## グローバルルールを上書きする理由
+
+[removed]
+
+## SubMa の固定構成
+
+| 項目 | 採用 |
+|---|---|
+| Ruby | 3.4.5 |
+| Webフレームワーク | Rails 8.1.x（設計書は 7 指定だが 8 にアップグレード） |
+| DB（永続） | MySQL 8.0（Cloud SQL） |
+| DB（リアルタイム） | Firestore |
+| 認証 | Firebase Auth（Google SSO） |
+| ホスティング | Cloud Run |
+| 非同期ジョブ | Sidekiq + Redis |
+| 定期処理 | Cloud Scheduler + Cloud Tasks |
+| フロント | Hotwire（Turbo + Stimulus）+ Vite + Tailwind |
+| AI | Claude API（claude-sonnet-4-20250514） |
+| IaC | Terraform |
+| CI/CD | GitHub Actions（OIDC + Workload Identity Federation） |
+| 観測 | Cloud Logging + Cloud Monitoring + Lograge |
+
+## 守るべき設計ルール（要件・設計書より）
+
+### 必読
+- `SubMa_Requirements.md`（要件定義書 / 親フォルダの docx）
+- `SubMa_Design.md`（設計書 兼 開発指示書 / 親フォルダの docx）
+- `development-log.md`（最新エントリで前回コンテキスト把握）
+
+### セキュリティ（NFR-S 系）
+- **CSV ファイルは処理後即削除**、永続化禁止（NFR-S-09）
+- Claude API 送信時はユーザー識別子除外、CSV 内 PII はマスク（NFR-S-10）
+- API キー・DB 認証情報は **Secret Manager 経由のみ**、コード直書き禁止
+- Brakeman / bundler-audit を CI で実行、警告ゼロを維持
+- 監査ログを全書き込み操作で記録（AuditLog モデル）
+
+### AI 利用（AI_USAGE_GUIDELINE.md に従う）
+- **本物のユーザー CSV を Claude / Claude Code に渡さない**。常にダミーデータを使う
+- `AiClassifier#mask_pii` の責務を勝手に削らない
+- AI 生成コードはコミットメッセージに `[ai-assisted]` タグ
+- 使用モデル（Sonnet / Opus）を development-log.md に記録
+
+### コミットメッセージ
+```
+<type>(phase<N>): <subject>
+```
+例: `feat(phase3): Add Rakuten CSV adapter`
+
+type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `infra`
+
+### 不明点・設計判断
+作業を止めて development-log.md に質問記録、リポジトリオーナーに確認。**勝手に進めない**。
+
+## セッション開始時の手順
+
+1. `subma/CLAUDE.md`（本ファイル）を読む
+2. `SubMa_Design.md`（設計書）と `SubMa_Requirements.md`（要件）を必要に応じて参照（親フォルダ `[local-path]` の docx）
+3. `development-log.md` の最新エントリで前回コンテキスト把握
+4. 現在の Phase / タスクを宣言してから作業開始
+
+## セッション終了時の手順
+
+`development-log.md` に追記:
+
+```
+## YYYY-MM-DD HH:MM (Phase X / Task Y)
+**着手内容**:
+**完了**:
+**未完了・次回引き継ぎ**:
+**使用モデル**: Sonnet / Opus
+**メモ**:
+```
+
+## リポジトリ公開設定
+
+**Private**（CLAUDE.md グローバルルール通り）。理由: Stripe Webhook secret 等の誤コミットリスクを下げるため Private が安全。コードを見せたい時は個別に Collaborator 招待する。
