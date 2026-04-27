@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_27_054528) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_27_060224) do
   create_table "audit_logs", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "action", null: false
     t.datetime "created_at", null: false
@@ -25,6 +25,39 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_054528) do
     t.index ["user_id"], name: "index_audit_logs_on_user_id"
   end
 
+  create_table "service_templates", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.decimal "default_amount", precision: 10, scale: 2
+    t.integer "default_billing_cycle", default: 0, null: false
+    t.string "default_category"
+    t.string "icon_url"
+    t.json "match_patterns"
+    t.string "service_name", null: false
+    t.datetime "updated_at", null: false
+    t.index ["default_category"], name: "index_service_templates_on_default_category"
+    t.index ["service_name"], name: "index_service_templates_on_service_name", unique: true
+  end
+
+  create_table "subscriptions", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.decimal "amount", precision: 10, scale: 2, null: false
+    t.integer "billing_cycle", default: 0, null: false
+    t.string "category"
+    t.datetime "created_at", null: false
+    t.string "currency", limit: 3, default: "JPY", null: false
+    t.text "memo"
+    t.date "next_billing_date"
+    t.string "payment_method"
+    t.string "service_name", null: false
+    t.integer "source", default: 0, null: false
+    t.date "started_at"
+    t.integer "status", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["next_billing_date"], name: "index_subscriptions_on_next_billing_date"
+    t.index ["user_id", "status"], name: "index_subscriptions_on_user_id_and_status"
+    t.index ["user_id"], name: "index_subscriptions_on_user_id"
+  end
+
   create_table "users", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "display_name"
@@ -37,4 +70,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_054528) do
   end
 
   add_foreign_key "audit_logs", "users"
+  add_foreign_key "subscriptions", "users"
 end
