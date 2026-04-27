@@ -39,6 +39,16 @@ RSpec.describe "Auth", type: :request do
         expect(body["redirect_to"]).to eq(dashboard_path)
         expect(session[:user_id]).to eq(User.last.id)
       end
+
+      it "records an audit log for sign_in" do
+        expect {
+          post auth_sign_in_path, params: { id_token: "valid.jwt.token" }, as: :json
+        }.to change(AuditLog, :count).by(1)
+
+        log = AuditLog.last
+        expect(log.action).to eq(AuditLog::ACTION_AUTH_SIGN_IN)
+        expect(log.user_id).to eq(User.last.id)
+      end
     end
 
     context "with an invalid id token" do
@@ -56,6 +66,16 @@ RSpec.describe "Auth", type: :request do
         expect(response).to have_http_status(:unauthorized)
         expect(JSON.parse(response.body)["error"]).to eq("invalid_token")
         expect(session[:user_id]).to be_nil
+      end
+
+      it "records an audit log for sign_in_failed" do
+        expect {
+          post auth_sign_in_path, params: { id_token: "bad.token" }, as: :json
+        }.to change(AuditLog, :count).by(1)
+
+        log = AuditLog.last
+        expect(log.action).to eq(AuditLog::ACTION_AUTH_SIGN_IN_FAILED)
+        expect(log.user_id).to be_nil
       end
     end
   end
