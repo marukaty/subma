@@ -44,6 +44,7 @@ services:
         bundle check || bundle install &&
         bin/rails db:prepare &&
         rm -f tmp/pids/server.pid &&
+        bin/rails tailwindcss:build &&
         bin/rails server -b 0.0.0.0
       "
     # 他プロジェクト（gakushu等）と被らないようホストは 3010 を使う
