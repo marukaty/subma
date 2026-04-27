@@ -2,20 +2,23 @@ class DashboardController < ApplicationController
   before_action :authenticate_user!
 
   def show
-    active_subs = current_user.subscriptions.active.includes(:user)
+    all_subs = current_user.subscriptions.includes(:user).to_a
+    active_subs = all_subs.select(&:status_active?)
 
-    @subscription_count = active_subs.count
+    @subscription_count = active_subs.size
     @monthly_total = active_subs.sum { |s| s.monthly_amount }
     @yearly_total = active_subs.sum { |s| s.yearly_amount }
 
-    # カテゴリ別の月額合計（円グラフ用）
+    # カテゴリ別の月額合計（円グラフ用、active のみ）
     @category_breakdown = active_subs.group_by { |s| s.category.presence || "未分類" }
                                      .transform_values { |subs| subs.sum { |s| s.monthly_amount } }
                                      .sort_by { |_, v| -v }
                                      .to_h
 
-    # 直近 12 ヶ月の月間推移（started_at を使った概算）
-    @monthly_history = build_monthly_history(active_subs)
+    # 直近 12 ヶ月の月間推移
+    # 各月で started_at <= 月末 && (cancelled_at.nil? || cancelled_at >= 月初) を
+    # 満たすサブスクの月額を合計（解約済みも当時アクティブだった月にはカウント）
+    @monthly_history = build_monthly_history(all_subs)
 
     # 今後 30 日の引落予定（サイドリスト用）
     @upcoming = current_user.subscriptions.upcoming(30)
@@ -27,14 +30,22 @@ class DashboardController < ApplicationController
 
   private
 
-  # 直近 12 ヶ月、各月末時点で「started_at がその月以前」のサブスクの月額合計を返す
+  # 直近 12 ヶ月の月別月額合計を返す
+  # ある月にアクティブだった条件:
+  #   - started_at が nil または 月末以前
+  #   - かつ cancelled_at が nil または 月初以降
+  # @param all_subs [Array<Subscription>] 解約済み含めた全サブスク
   # @return [Hash<String, BigDecimal>] { "2025-05" => 5400, ... }
-  def build_monthly_history(active_subs)
+  def build_monthly_history(all_subs)
     months = (0..11).map { |i| (i.months.ago).beginning_of_month }.reverse
     months.each_with_object({}) do |month, acc|
+      month_start = month
       month_end = month.end_of_month
-      total = active_subs.select { |s| s.started_at.nil? || s.started_at <= month_end }
-                         .sum { |s| s.monthly_amount }
+      total = all_subs.select { |s|
+        started_in_or_before = s.started_at.nil? || s.started_at <= month_end
+        not_yet_cancelled = s.cancelled_at.nil? || s.cancelled_at >= month_start
+        started_in_or_before && not_yet_cancelled
+      }.sum { |s| s.monthly_amount }
       acc[month.strftime("%Y-%m")] = total
     end
   end
