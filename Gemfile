@@ -64,3 +64,5 @@ gem "dotenv-rails", "~> 3.2", groups: [ :development, :test ]
 gem "chartkick", "~> 5.2"
 
 gem "csv", "~> 3.3"
+
+gem "sidekiq", "~> 8.1"

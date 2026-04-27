@@ -1,0 +1,69 @@
+<% content_for :title, "CSV取り込み - SubMa" %>
+
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-bold text-gray-800 mb-6">CSV を取り込む</h1>
+
+  <div class="bg-white rounded-2xl shadow-sm p-6">
+    <%= form_with(model: @csv_import, url: csv_imports_path, local: true, multipart: true,
+                  class: "space-y-4") do |f| %>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">フォーマット</label>
+        <%= f.select :format,
+              [ [ "楽天カード", "rakuten" ] ],
+              {},
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" %>
+        <p class="text-xs text-gray-500 mt-1">
+          MVP は楽天カードのみ完全対応。他社対応は順次追加予定（要件 §7.2）
+        </p>
+      </div>
+
+      <div data-controller="file-upload"
+           data-file-upload-drag-over-class="border-blue-500 bg-blue-50">
+        <label class="block text-sm font-medium text-gray-700 mb-1">CSV ファイル</label>
+
+        <div data-file-upload-target="dropzone"
+             data-action="click->file-upload#openPicker dragover->file-upload#onDragOver dragleave->file-upload#onDragLeave drop->file-upload#onDrop"
+             class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition">
+          <%= f.file_field :file, accept: ".csv,text/csv", required: true,
+                data: {
+                  file_upload_target: "input",
+                  action: "change->file-upload#onChange"
+                },
+                class: "hidden" %>
+
+          <div data-file-upload-target="placeholder" class="text-gray-500">
+            <svg class="mx-auto w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4"/>
+            </svg>
+            <p class="text-sm font-medium text-gray-700">クリックして選択 または ドラッグ&ドロップ</p>
+            <p class="text-xs text-gray-500 mt-1">.csv ファイル / 5MB 以下</p>
+          </div>
+
+          <div data-file-upload-target="filename" class="hidden text-sm text-blue-700 font-medium"></div>
+        </div>
+
+        <p class="text-xs text-gray-500 mt-2">
+          ファイルは AI 判定後に自動で削除されます（NFR-S-09）
+        </p>
+      </div>
+
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
+        <p class="font-medium mb-1">📋 取り込みの流れ</p>
+        <ol class="list-decimal list-inside space-y-0.5">
+          <li>規則ベース判定（既知サービスを高速マッチ）</li>
+          <li>パターン検出（過去取引と照合）</li>
+          <li>AI判定（PR-C で実装予定。今は Tier 1/2 のみ）</li>
+          <li>処理完了後、CSV ファイルを削除</li>
+        </ol>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <%= link_to "キャンセル", csv_imports_path,
+              class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900" %>
+        <%= f.submit "アップロードして取り込み開始",
+              class: "px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700" %>
+      </div>
+    <% end %>
+  </div>
+</div>
