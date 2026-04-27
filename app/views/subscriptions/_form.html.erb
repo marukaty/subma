@@ -69,6 +69,21 @@
 
   <div class="grid grid-cols-2 gap-4">
     <div>
+      <%= f.label :started_at, "契約開始日（任意）", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.date_field :started_at,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+      <p class="text-xs text-gray-500 mt-1">月間推移グラフの集計に使用</p>
+    </div>
+    <div>
+      <%= f.label :cancelled_at, "解約日（任意）", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.date_field :cancelled_at,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+      <p class="text-xs text-gray-500 mt-1">「解約」ボタンを押すと自動で今日の日付が入ります</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
       <%= f.label :category, "カテゴリ", class: "block text-sm font-medium text-gray-700 mb-1" %>
       <%= f.text_field :category,
             data: { template_picker_target: "category" },

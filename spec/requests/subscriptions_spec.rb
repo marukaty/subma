@@ -115,6 +115,25 @@ RSpec.describe "Subscriptions", type: :request do
         patch cancel_subscription_path(subscription)
         expect(subscription.reload.status).to eq("cancelled")
       end
+
+      it "cancel で cancelled_at が今日にセットされる" do
+        expect(subscription.cancelled_at).to be_nil
+        patch cancel_subscription_path(subscription)
+        expect(subscription.reload.cancelled_at).to eq(Date.current)
+      end
+
+      it "cancel で既に cancelled_at がある場合は上書きしない" do
+        subscription.update!(cancelled_at: 30.days.ago.to_date)
+        patch cancel_subscription_path(subscription)
+        expect(subscription.reload.cancelled_at).to eq(30.days.ago.to_date)
+      end
+
+      it "resume で cancelled_at がクリアされる" do
+        subscription.update!(status: :cancelled, cancelled_at: 5.days.ago.to_date)
+        patch resume_subscription_path(subscription)
+        expect(subscription.reload.cancelled_at).to be_nil
+        expect(subscription.reload.status).to eq("active")
+      end
     end
   end
 end
