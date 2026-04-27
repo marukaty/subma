@@ -112,4 +112,38 @@ RSpec.describe Subscription, type: :model do
       expect(sub.yearly_amount).to eq(12_000)
     end
   end
+
+  describe "before_save: align_status_with_cancelled_at" do
+    it "active で cancelled_at が過去日なら保存時に status が cancelled に補正される" do
+      sub = described_class.create!(valid_attrs.merge(status: :active, cancelled_at: 30.days.ago.to_date))
+      expect(sub.status).to eq("cancelled")
+    end
+
+    it "active で cancelled_at が今日なら status が cancelled に補正される" do
+      sub = described_class.create!(valid_attrs.merge(status: :active, cancelled_at: Date.current))
+      expect(sub.status).to eq("cancelled")
+    end
+
+    it "active で cancelled_at が未来日なら status は active のまま（解約予約）" do
+      sub = described_class.create!(valid_attrs.merge(status: :active, cancelled_at: 30.days.from_now.to_date))
+      expect(sub.status).to eq("active")
+    end
+
+    it "cancelled_at が nil なら status は変更されない" do
+      sub = described_class.create!(valid_attrs.merge(status: :active, cancelled_at: nil))
+      expect(sub.status).to eq("active")
+    end
+
+    it "paused で cancelled_at が過去日なら cancelled に補正される" do
+      sub = described_class.create!(valid_attrs.merge(status: :paused, cancelled_at: 1.day.ago.to_date))
+      expect(sub.status).to eq("cancelled")
+    end
+
+    it "再 save 時にも整合性が維持される（cancelled_at 後に status を active に戻されても再補正）" do
+      sub = described_class.create!(valid_attrs.merge(status: :active, cancelled_at: 30.days.ago.to_date))
+      expect(sub.status).to eq("cancelled")
+      sub.update!(status: :active)  # 強制的に active に
+      expect(sub.reload.status).to eq("cancelled")  # before_save で再補正されている
+    end
+  end
 end
