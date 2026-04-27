@@ -39,6 +39,8 @@
           <th class="text-right px-4 py-3">料金</th>
           <th class="text-left px-4 py-3">サイクル</th>
           <th class="text-left px-4 py-3">次回引落</th>
+          <th class="text-left px-4 py-3">契約開始</th>
+          <th class="text-left px-4 py-3">解約日</th>
           <th class="text-left px-4 py-3">ステータス</th>
           <th class="text-right px-4 py-3">操作</th>
         </tr>
@@ -51,6 +53,8 @@
             <td class="px-4 py-3 text-right text-gray-800"><%= number_to_currency(sub.amount, unit: sub.currency + " ") %></td>
             <td class="px-4 py-3 text-gray-600"><%= t_billing_cycle(sub.billing_cycle) %></td>
             <td class="px-4 py-3 text-gray-600"><%= sub.next_billing_date&.strftime("%Y/%m/%d") || "—" %></td>
+            <td class="px-4 py-3 text-gray-600"><%= sub.started_at&.strftime("%Y/%m/%d") || "—" %></td>
+            <td class="px-4 py-3 text-gray-600"><%= sub.cancelled_at&.strftime("%Y/%m/%d") || "—" %></td>
             <td class="px-4 py-3">
               <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= status_badge_class(sub.status) %>">
                 <%= t_status(sub.status) %>
