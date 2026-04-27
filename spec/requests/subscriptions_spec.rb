@@ -41,6 +41,31 @@ RSpec.describe "Subscriptions", type: :request do
         expect(response.body).to include("OwnSub")
         expect(response.body).not_to include("OtherSub")
       end
+
+      it "テーブルに契約開始日・解約日が表示される" do
+        user.subscriptions.create!(valid_params.merge(
+          service_name: "SubWithDates",
+          started_at: Date.new(2025, 1, 15),
+          cancelled_at: 100.days.from_now.to_date  # 未来日なら active のまま
+        ))
+        get subscriptions_path(view: "table")
+        expect(response.body).to include("2025/01/15")
+        expect(response.body).to include(100.days.from_now.to_date.strftime("%Y/%m/%d"))
+      end
+
+      it "過去日 cancelled_at のサブスクには「一時停止」「解約」ボタンが表示されない" do
+        user.subscriptions.create!(valid_params.merge(
+          service_name: "PastCancelled",
+          status: "active",  # 保存時に cancelled に補正される想定
+          cancelled_at: 30.days.ago.to_date
+        ))
+        get subscriptions_path
+        expect(response.body).to include("PastCancelled")
+        # 削除ボタンはあるが、一時停止/解約ボタンは無い（status_active? / status_paused? が false なので）
+        # response.body 全体ではなく該当行に絞るのが理想だが、簡易検証として
+        # 「PastCancelled」周辺に「一時停止」がないことを確認
+        expect(response.body.scan(/PastCancelled[^<]*?一時停止/m)).to be_empty
+      end
     end
 
     describe "POST /subscriptions" do

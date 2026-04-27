@@ -28,6 +28,12 @@ class Subscription < ApplicationRecord
   validates :source, presence: true
   validates :memo, length: { maximum: 1000 }, allow_blank: true
 
+  # cancelled_at が今日以前にセットされている場合は status を cancelled に自動補正する。
+  # 過去日の解約データを active のまま登録すると一覧の状態とアクションボタンが
+  # 不整合になるため、保存時に整合性を担保する。
+  # 未来の cancelled_at（解約予約）は active を維持する。
+  before_save :align_status_with_cancelled_at
+
   scope :active,    -> { where(status: :active) }
   scope :paused,    -> { where(status: :paused) }
   scope :cancelled, -> { where(status: :cancelled) }
@@ -55,5 +61,14 @@ class Subscription < ApplicationRecord
     when "weekly"  then (amount * 52).round(2)
     else amount * 12
     end
+  end
+
+  private
+
+  def align_status_with_cancelled_at
+    return if cancelled_at.blank?
+    return if cancelled_at > Date.current
+
+    self.status = :cancelled unless status_cancelled?
   end
 end
