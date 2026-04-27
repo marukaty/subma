@@ -52,3 +52,11 @@ end
 gem "rspec-rails", "~> 8.0", groups: [:development, :test]
 gem "capybara", "~> 3.40", groups: [:development, :test]
 gem "selenium-webdriver", "~> 4.43", groups: [:development, :test]
+
+gem "jwt", "~> 3.1"
+gem "importmap-rails", "~> 2.2"
+gem "rack-attack", "~> 6.8"
+gem "secure_headers", "~> 7.2"
+gem "lograge", "~> 0.14.0"
+
+gem "dotenv-rails", "~> 3.2", groups: [:development, :test]
