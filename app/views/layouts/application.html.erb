@@ -9,6 +9,12 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
+    <%# Firebase Web SDK 設定値（apiKey はクライアント公開前提） %>
+    <meta name="firebase-api-key" content="<%= ENV['FIREBASE_API_KEY'] %>">
+    <meta name="firebase-auth-domain" content="<%= ENV['FIREBASE_AUTH_DOMAIN'] %>">
+    <meta name="firebase-project-id" content="<%= ENV['FIREBASE_PROJECT_ID'] %>">
+    <meta name="firebase-app-id" content="<%= ENV['FIREBASE_APP_ID'] %>">
+
     <%= yield :head %>
 
     <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
@@ -20,6 +26,7 @@
 
     <%# Includes all stylesheet files in app/assets/stylesheets %>
     <%= stylesheet_link_tag :app %>
+    <%= javascript_importmap_tags %>
   </head>
 
   <body>
