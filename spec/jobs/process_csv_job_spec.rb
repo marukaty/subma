@@ -10,6 +10,9 @@ RSpec.describe ProcessCsvJob, type: :job do
   end
 
   before do
+    # CI では db:prepare 時に seed が走り本物のテンプレートが入っているので、
+    # テスト用に確定したマッチ結果を得るため一旦全削除してから登録し直す
+    ServiceTemplate.delete_all
     ServiceTemplate.create!(
       service_name: "TestNetflix_Job",
       default_amount: 1490,
