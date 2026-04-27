@@ -62,22 +62,18 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-semibold text-gray-700">引落日カレンダー</h2>
           <div class="flex items-center gap-3 text-sm">
-            <%# Turbo を無効化してフルリロード。chartkick の inline script を新しい CSP nonce で再実行させるため %>
             <%= link_to "‹ 前月",
                   dashboard_path(year: @calendar[:prev_month].year, month: @calendar[:prev_month].month),
-                  class: "text-gray-500 hover:text-blue-600",
-                  data: { turbo: false } %>
+                  class: "text-gray-500 hover:text-blue-600" %>
             <span class="font-medium text-gray-800">
               <%= @calendar[:first].strftime("%Y年%-m月") %>
             </span>
             <%= link_to "翌月 ›",
                   dashboard_path(year: @calendar[:next_month].year, month: @calendar[:next_month].month),
-                  class: "text-gray-500 hover:text-blue-600",
-                  data: { turbo: false } %>
+                  class: "text-gray-500 hover:text-blue-600" %>
             <% unless @calendar[:first] == Date.current.beginning_of_month %>
               <%= link_to "今月へ", dashboard_path,
-                    class: "text-xs text-blue-600 hover:underline ml-1",
-                    data: { turbo: false } %>
+                    class: "text-xs text-blue-600 hover:underline ml-1" %>
             <% end %>
           </div>
         </div>

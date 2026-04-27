@@ -9,6 +9,11 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
+    <%# Turbo Drive を無効化（フルリロード）。
+        理由: CSP nonce はレスポンスごとに発行されるため、Turbo がインライン script を
+        移植すると旧 nonce のままで CSP に弾かれる。Phase 5 / Issue #7 で Vite 化時に再考。 %>
+    <meta name="turbo-visit-control" content="reload">
+
     <%# Firebase Web SDK 設定値（apiKey はクライアント公開前提） %>
     <meta name="firebase-api-key" content="<%= ENV['FIREBASE_API_KEY'] %>">
     <meta name="firebase-auth-domain" content="<%= ENV['FIREBASE_AUTH_DOMAIN'] %>">
