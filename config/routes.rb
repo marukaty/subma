@@ -22,6 +22,9 @@ Rails.application.routes.draw do
   # ServiceTemplate（プルダウン用 JSON）
   resources :service_templates, only: [ :index ]
 
+  # 設定
+  resource :settings, only: [ :show, :update ]
+
   # ルート
   root to: redirect { |_, req|
     # NOTE: redirect の中で session を直接見る方法はないため、
