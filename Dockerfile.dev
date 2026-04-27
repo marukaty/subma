@@ -1,0 +1,33 @@
+# 開発用 Dockerfile
+# 本番用は ./Dockerfile を参照
+ARG RUBY_VERSION=3.4.5
+FROM docker.io/library/ruby:$RUBY_VERSION-slim
+
+WORKDIR /rails
+
+# 開発用に必要なパッケージ（gem ビルド用も含む）
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+      build-essential \
+      curl \
+      default-libmysqlclient-dev \
+      default-mysql-client \
+      git \
+      libvips \
+      libyaml-dev \
+      pkg-config && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+ENV BUNDLE_PATH=/usr/local/bundle \
+    BUNDLE_JOBS=4
+
+# Gemfile を先にコピーして bundle install キャッシュ層を有効化
+COPY Gemfile Gemfile.lock ./
+RUN bundle install
+
+# アプリケーション本体は docker-compose の volume でマウントするので
+# build 時のコピーは不要（bundle install のためだけにこの段階を使う）
+
+EXPOSE 3000
+
+CMD ["bin/rails", "server", "-b", "0.0.0.0"]

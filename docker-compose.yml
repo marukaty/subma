@@ -1,0 +1,66 @@
+# 開発環境: Rails + MySQL + Redis
+# 起動: docker compose up
+# 停止: docker compose down
+# DBリセット: docker compose down -v
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: subma_development
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: >
+      bash -c "
+        bundle check || bundle install &&
+        bin/rails db:prepare &&
+        rm -f tmp/pids/server.pid &&
+        bin/rails server -b 0.0.0.0
+      "
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/rails
+      - bundle_cache:/usr/local/bundle
+    environment:
+      RAILS_ENV: development
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      BINDING: "0.0.0.0"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    tty: true
+    stdin_open: true
+
+volumes:
+  mysql_data:
+  redis_data:
+  bundle_cache:
