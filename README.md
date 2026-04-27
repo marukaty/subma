@@ -33,7 +33,9 @@
 ```bash
 docker compose up
 ```
-ブラウザで `http://localhost:3000` を開く。
+ブラウザで `http://localhost:3010` を開く（他プロジェクトと被らないようホストは 3010）。
+- MySQL: localhost:3307（コンテナ内: db:3306）
+- Redis: localhost:6380（コンテナ内: redis:6379）
 
 ### ローカル直接起動
 ```bash

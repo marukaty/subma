@@ -8,8 +8,10 @@ services:
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
       MYSQL_DATABASE: subma_development
+    # ホストの 3306 が他で使われている場合があるので 3307 で公開
+    # （docker compose 内部からは "db:3306" でアクセス）
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -21,8 +23,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    # ホストの 6379 が他で使われている場合があるので 6380 で公開
+    # （docker compose 内部からは "redis:6379" でアクセス）
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -42,8 +46,10 @@ services:
         rm -f tmp/pids/server.pid &&
         bin/rails server -b 0.0.0.0
       "
+    # 他プロジェクト（gakushu等）と被らないようホストは 3010 を使う
+    # （ブラウザは http://localhost:3010 でアクセス）
     ports:
-      - "3000:3000"
+      - "3010:3000"
     volumes:
       - .:/rails
       - bundle_cache:/usr/local/bundle
