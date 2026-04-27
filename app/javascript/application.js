@@ -2,3 +2,6 @@
 import "@hotwired/turbo-rails"
 import "auth_handler"
 import "controllers"
+
+// Chartkick + Chart.js は Dashboard でグラフを描くためグローバル登録
+import "charts"

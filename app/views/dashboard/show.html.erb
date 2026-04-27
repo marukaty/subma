@@ -1,14 +1,102 @@
 <% content_for :title, "ダッシュボード - SubMa" %>
 
-<div class="w-full">
-  <div class="mb-6">
+<div class="space-y-6">
+  <div>
     <h1 class="text-2xl font-bold text-gray-800">ダッシュボード</h1>
     <p class="text-sm text-gray-500 mt-1">
-      ようこそ、<%= current_user.display_name || current_user.email %> さん
+      <%= current_user.display_name || current_user.email %> さんのサブスク状況
     </p>
   </div>
 
-  <div class="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400">
-    Phase 2 でサブスク一覧・カレンダー・グラフを実装します
+  <%# サマリ %>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="bg-white rounded-2xl shadow-sm p-5">
+      <p class="text-xs text-gray-500">月額合計（利用中）</p>
+      <p class="text-2xl font-bold text-gray-800 mt-2">
+        <%= number_to_currency(@monthly_total, unit: "¥", precision: 0) %>
+      </p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-5">
+      <p class="text-xs text-gray-500">年額合計（推定）</p>
+      <p class="text-2xl font-bold text-gray-800 mt-2">
+        <%= number_to_currency(@yearly_total, unit: "¥", precision: 0) %>
+      </p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-5">
+      <p class="text-xs text-gray-500">利用中サービス数</p>
+      <p class="text-2xl font-bold text-gray-800 mt-2">
+        <%= @subscription_count %> <span class="text-sm font-normal text-gray-500">件</span>
+      </p>
+    </div>
   </div>
+
+  <% if @subscription_count.zero? %>
+    <div class="bg-white rounded-2xl shadow-sm p-16 text-center text-gray-400">
+      <p class="mb-4">まだサブスクが登録されていません</p>
+      <%= link_to "最初のサブスクを登録する →", new_subscription_path,
+            class: "text-blue-600 hover:underline font-medium" %>
+    </div>
+  <% else %>
+
+    <%# グラフ 2 列 %>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">カテゴリ別 月額</h2>
+        <% if @category_breakdown.any? %>
+          <%= pie_chart @category_breakdown, suffix: " 円", height: "280px",
+                colors: %w[#2563EB #10B981 #F59E0B #EF4444 #8B5CF6 #EC4899 #14B8A6 #6B7280 #84CC16 #F97316] %>
+        <% else %>
+          <p class="text-center text-gray-400 py-12 text-sm">データなし</p>
+        <% end %>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">月間推移（直近 12 ヶ月）</h2>
+        <%= line_chart @monthly_history, suffix: " 円", height: "280px",
+              colors: [ "#2563EB" ], curve: false, discrete: true %>
+      </div>
+    </div>
+
+    <%# カレンダー + 今後30日 %>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="bg-white rounded-2xl shadow-sm p-5 lg:col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">引落日カレンダー</h2>
+          <div class="flex items-center gap-3 text-sm">
+            <%= link_to "‹ 前月",
+                  dashboard_path(year: @calendar[:prev_month].year, month: @calendar[:prev_month].month),
+                  class: "text-gray-500 hover:text-blue-600" %>
+            <span class="font-medium text-gray-800">
+              <%= @calendar[:first].strftime("%Y年%-m月") %>
+            </span>
+            <%= link_to "翌月 ›",
+                  dashboard_path(year: @calendar[:next_month].year, month: @calendar[:next_month].month),
+                  class: "text-gray-500 hover:text-blue-600" %>
+            <% unless @calendar[:first] == Date.current.beginning_of_month %>
+              <%= link_to "今月へ", dashboard_path,
+                    class: "text-xs text-blue-600 hover:underline ml-1" %>
+            <% end %>
+          </div>
+        </div>
+        <%= render "calendar", calendar: @calendar %>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm p-5">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">今後 30 日の引落予定</h2>
+        <% if @upcoming.any? %>
+          <ul class="divide-y divide-gray-100 -my-2">
+            <% @upcoming.each do |sub| %>
+              <li class="flex items-center justify-between py-2 text-sm">
+                <div>
+                  <p class="font-medium text-gray-800"><%= sub.service_name %></p>
+                  <p class="text-xs text-gray-400"><%= sub.next_billing_date.strftime("%-m月%-d日 (#{%w[日 月 火 水 木 金 土][sub.next_billing_date.wday]})") %></p>
+                </div>
+                <p class="text-sm font-medium text-gray-700"><%= number_to_currency(sub.amount, unit: "¥", precision: 0) %></p>
+              </li>
+            <% end %>
+          </ul>
+        <% else %>
+          <p class="text-center text-gray-400 py-8 text-sm">予定なし</p>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
 </div>
