@@ -10,6 +10,18 @@ Rails.application.routes.draw do
   # ダッシュボード
   get "dashboard" => "dashboard#show", as: :dashboard
 
+  # サブスク CRUD
+  resources :subscriptions, except: [ :show ] do
+    member do
+      patch :pause     # active -> paused
+      patch :resume    # paused -> active
+      patch :cancel    # -> cancelled
+    end
+  end
+
+  # ServiceTemplate（プルダウン用 JSON）
+  resources :service_templates, only: [ :index ]
+
   # ルート
   root to: redirect { |_, req|
     # NOTE: redirect の中で session を直接見る方法はないため、

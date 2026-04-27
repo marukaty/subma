@@ -1,0 +1,31 @@
+<div class="bg-white rounded-2xl shadow-sm p-5 space-y-3">
+  <div class="flex items-start justify-between">
+    <div>
+      <div class="flex items-center gap-2">
+        <h2 class="font-bold text-gray-800"><%= subscription.service_name %></h2>
+        <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= status_badge_class(subscription.status) %>">
+          <%= t_status(subscription.status) %>
+        </span>
+      </div>
+      <p class="text-xs text-gray-500 mt-1"><%= subscription.category %></p>
+    </div>
+    <div class="text-right">
+      <p class="text-lg font-bold text-gray-800"><%= number_to_currency(subscription.amount, unit: subscription.currency + " ") %></p>
+      <p class="text-xs text-gray-500"><%= t_billing_cycle(subscription.billing_cycle) %></p>
+    </div>
+  </div>
+
+  <% if subscription.next_billing_date %>
+    <p class="text-xs text-gray-500">
+      次回引落: <%= subscription.next_billing_date.strftime("%Y/%m/%d") %>
+    </p>
+  <% end %>
+
+  <% if subscription.payment_method.present? %>
+    <p class="text-xs text-gray-400"><%= subscription.payment_method %></p>
+  <% end %>
+
+  <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+    <%= render "actions", subscription: subscription %>
+  </div>
+</div>
