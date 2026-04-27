@@ -38,5 +38,8 @@ module Subma
 
     # Don't generate system test files.
     config.generators.system_tests = nil
+
+    # ActiveJob のバックエンドに Sidekiq を採用（Phase 3 ProcessCsvJob 等）
+    config.active_job.queue_adapter = :sidekiq
   end
 end

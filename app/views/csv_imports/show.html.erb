@@ -1,0 +1,94 @@
+<% content_for :title, "#{@csv_import.filename} - SubMa" %>
+
+<%# 完了/失敗以外のときは 2 秒ごとに自動リロード（簡易ポーリング） %>
+<% unless @csv_import.status_completed? || @csv_import.status_failed? %>
+  <% content_for :head do %>
+    <meta http-equiv="refresh" content="2">
+  <% end %>
+<% end %>
+
+<div class="space-y-6">
+  <div>
+    <%= link_to "← CSV取り込み履歴に戻る", csv_imports_path,
+          class: "text-sm text-blue-600 hover:underline" %>
+    <h1 class="text-2xl font-bold text-gray-800 mt-2"><%= @csv_import.filename %></h1>
+    <p class="text-sm text-gray-500 mt-1">
+      <%= @csv_import.format %> /
+      <%= @csv_import.created_at.strftime("%Y/%m/%d %H:%M") %>
+    </p>
+  </div>
+
+  <%# ステータス %>
+  <div class="bg-white rounded-2xl shadow-sm p-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs text-gray-500">ステータス</p>
+        <p class="text-lg font-semibold text-gray-800 mt-1">
+          <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= csv_status_badge_class(@csv_import.status) %>">
+            <%= t_csv_status(@csv_import.status) %>
+          </span>
+        </p>
+      </div>
+      <% if @csv_import.original_row_count %>
+        <div class="text-right">
+          <p class="text-xs text-gray-500">取引行数 / サブスク判定</p>
+          <p class="text-lg font-semibold text-gray-800 mt-1">
+            <%= @csv_import.original_row_count %> 件 /
+            <span class="text-blue-600"><%= @csv_import.matched_count || 0 %> 件</span>
+          </p>
+        </div>
+      <% end %>
+    </div>
+    <% unless @csv_import.status_completed? || @csv_import.status_failed? %>
+      <p class="text-xs text-gray-400 mt-3">
+        ⏳ 処理中です。このページは自動更新されます…
+      </p>
+    <% end %>
+  </div>
+
+  <%# 抽出結果 %>
+  <% if @csv_import.status_completed? && @transactions.any? %>
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <div class="p-4 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-700">抽出結果（<%= @transactions.size %> 件）</h2>
+        <p class="text-xs text-gray-500 mt-0.5">PR-C で「サブスク一括登録」機能を追加予定</p>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+          <tr>
+            <th class="text-left px-4 py-3">日付</th>
+            <th class="text-left px-4 py-3">利用店名</th>
+            <th class="text-right px-4 py-3">金額</th>
+            <th class="text-left px-4 py-3">判定</th>
+            <th class="text-left px-4 py-3">判定方法</th>
+            <th class="text-left px-4 py-3">推定サービス</th>
+            <th class="text-left px-4 py-3">推定カテゴリ</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <% @transactions.each do |tx| %>
+            <tr class="<%= tx.classification_subscription? ? 'bg-blue-50/40' : '' %>">
+              <td class="px-4 py-3 text-gray-600"><%= tx.transaction_date.strftime("%Y/%m/%d") %></td>
+              <td class="px-4 py-3 font-medium text-gray-800"><%= tx.description %></td>
+              <td class="px-4 py-3 text-right text-gray-800">¥<%= number_with_delimiter(tx.amount.to_i) %></td>
+              <td class="px-4 py-3">
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full
+                  <%= tx.classification_subscription? ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500' %>">
+                  <%= t_csv_classification(tx.classification) %>
+                </span>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500"><%= tx.classifier %></td>
+              <td class="px-4 py-3 text-gray-700"><%= tx.inferred_service_name || "—" %></td>
+              <td class="px-4 py-3 text-gray-700"><%= tx.inferred_category || "—" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% elsif @csv_import.status_failed? %>
+    <div class="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
+      <p class="font-medium">処理に失敗しました。</p>
+      <p class="text-sm mt-1">CSV のフォーマットや内容をご確認のうえ、再度アップロードしてください。</p>
+    </div>
+  <% end %>
+</div>
