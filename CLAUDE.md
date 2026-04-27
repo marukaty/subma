@@ -78,3 +78,29 @@ type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `infra`
 ## リポジトリ公開設定
 
 **Private**（CLAUDE.md グローバルルール通り）。理由: ポートフォリオ用途は別サイト（namiya.dev）で担保しており、Stripe Webhook secret 等の誤コミットリスクを下げるため Private が安全。コードを見せたい時は個別に Collaborator 招待する。
+
+## ブランチ運用規律（GitHub 無料プランの制約により**人とAIで担保**）
+
+GitHub 無料プランの Private リポではブランチ保護ルール / Rulesets を設定できないため、以下を **必ず** 守ること:
+
+### 絶対ルール
+- **main に直接 push しない**。常に feature ブランチを切ってPR経由でマージ
+- main へのマージは **必ず PR 経由**（squash or rebase merge 推奨、線形履歴維持）
+- 強制 push（`git push --force` / `--force-with-lease`）を main に行わない
+- main の削除を行わない
+
+### ブランチ命名
+- 新規機能: `feature/<phase><N>-<short-description>`（例: `feature/phase1-firebase-auth`）
+- バグ修正: `fix/<short-description>`（例: `fix/csv-parser-encoding`）
+- インフラ: `infra/<short-description>`
+- ドキュメント: `docs/<short-description>`
+
+### Claude Code（私）の自動チェック責務
+私は作業開始時に以下を確認する:
+1. 現在のブランチが `main` でないこと
+2. もし `main` にいたら、必ず先に `git checkout -b feature/...` でブランチを切ってから作業開始
+3. コミット直前にも再確認、`main` であれば作業を止めて Nami に報告
+
+### 将来の検討
+- GitHub Pro 有料化（月 $4 程度）でブランチ保護を物理的にかけられる
+- Phase 1 で「main に直接 push されたら CI で失敗させる」GitHub Actions を導入検討

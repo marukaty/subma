@@ -16,9 +16,18 @@ Claude Code セッション間の引き継ぎログ。新しいエントリは**
 - 基本ドキュメント雛形（README, SECURITY, AI_USAGE_GUIDELINE, CLAUDE.md, ADR テンプレ）
 - GitHub Private リポ作成、main 保護、Issue/PR テンプレ
 
-**完了**: （Phase 0 完了基準を満たした時点で記入）
+**完了**:
+- Rails 8.1.3 / Ruby 3.4.5 プロジェクト生成
+- RSpec 導入（0 examples, 0 failures pass）
+- Docker 開発環境（`docker compose up` で `http://localhost:3010` HTTP 200 確認）
+- 基本ドキュメント雛形すべて配置
+- GitHub Private リポ作成 + main へ初回 push 完了（https://github.com/marukaty/subma）
+- Issue / PR テンプレ配置
 
-**未完了・次回引き継ぎ**: Phase 1（Firebase Auth + セキュリティ基盤）
+**未完了・次回引き継ぎ**:
+- ブランチ保護ルールが GitHub 無料 Private では設定不可。**運用規律で担保する方針**を採用（CLAUDE.md に明記）
+- Phase 1（Firebase Auth + セキュリティ基盤）から開始
+- 次回 Claude Code セッションは必ず `git checkout -b feature/phase1-...` でブランチを切ってから作業開始すること
 
 **使用モデル**: Sonnet
 
