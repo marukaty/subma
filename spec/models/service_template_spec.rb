@@ -1,9 +1,10 @@
 require "rails_helper"
 
 RSpec.describe ServiceTemplate, type: :model do
+  # seed に同名サービスがあると unique 衝突するため、テスト専用のプレフィックスを使う
   let(:valid_attrs) do
     {
-      service_name: "Netflix",
+      service_name: "TestService_Netflix",
       default_amount: 1490,
       default_billing_cycle: :monthly,
       default_category: "エンタメ",
@@ -47,22 +48,23 @@ RSpec.describe ServiceTemplate, type: :model do
     end
 
     it "handles regex special chars in pattern (e.g. AMAZON.*PRIME)" do
-      template = described_class.create!(valid_attrs.merge(service_name: "Amazon Prime", match_patterns: [ "AMAZON.*PRIME" ]))
+      template = described_class.create!(valid_attrs.merge(service_name: "TestService_Amazon", match_patterns: [ "AMAZON.*PRIME" ]))
       expect(template.match?("AMAZON WEB PRIME")).to be(true)
       expect(template.match?("AMAZON BOOKS")).to be(false)
     end
 
     it "is safe against invalid regex (returns false instead of raising)" do
-      template = described_class.create!(valid_attrs.merge(service_name: "Bad", match_patterns: [ "[invalid" ]))
+      template = described_class.create!(valid_attrs.merge(service_name: "TestService_Bad", match_patterns: [ "[invalid" ]))
       expect(template.match?("anything")).to be(false)
     end
   end
 
   describe "scope by_category" do
+    # seed データを混ぜてカウントせず、unique なカテゴリで分離検証
     it "filters by default_category" do
-      a = described_class.create!(valid_attrs)
-      _b = described_class.create!(valid_attrs.merge(service_name: "GitHub", default_category: "仕事"))
-      expect(described_class.by_category("エンタメ")).to contain_exactly(a)
+      a = described_class.create!(valid_attrs.merge(default_category: "TestCategory_X"))
+      _b = described_class.create!(valid_attrs.merge(service_name: "TestService_GitHub", default_category: "TestCategory_Y"))
+      expect(described_class.by_category("TestCategory_X")).to contain_exactly(a)
     end
   end
 end
