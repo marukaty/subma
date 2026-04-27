@@ -55,13 +55,18 @@ class SubscriptionsController < ApplicationController
 
   def resume
     @audit_resource = @subscription
-    @subscription.status_active!
+    # 解約済みから再開する想定はない前提だが、誤操作対策で cancelled_at もクリア
+    @subscription.update!(status: :active, cancelled_at: nil)
     redirect_to subscriptions_path, notice: "「#{@subscription.service_name}」を再開しました"
   end
 
   def cancel
     @audit_resource = @subscription
-    @subscription.status_cancelled!
+    # 解約日が未指定なら今日をセット（手動入力された日付があればそれを尊重）
+    @subscription.update!(
+      status: :cancelled,
+      cancelled_at: @subscription.cancelled_at || Date.current
+    )
     redirect_to subscriptions_path, notice: "「#{@subscription.service_name}」を解約済みにしました"
   end
 
@@ -76,7 +81,7 @@ class SubscriptionsController < ApplicationController
       subscription: [
         :service_name, :amount, :currency, :billing_cycle,
         :next_billing_date, :payment_method, :category, :status,
-        :started_at, :memo
+        :started_at, :cancelled_at, :memo
       ]
     )
   end
