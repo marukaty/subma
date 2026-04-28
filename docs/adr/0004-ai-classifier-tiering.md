@@ -1,0 +1,101 @@
+# ADR-0004: サブスク抽出の階層化分類器（Tier 1 / 2 / 3）
+
+- **ステータス**: 採択
+- **日付**: 2026-04-28
+- **決定者**: なみ屋
+- **関連 ADR**: ADR-0003（CSV パイプライン）、ADR-0005（CSV PII 保護）
+
+## 背景
+
+CSV 取り込みからサブスクを自動抽出するうえで、以下を同時に成立させる必要があった:
+
+1. **精度** — 既知サービス（Netflix 等）は確実に拾い、未知サービスも適切に推定する
+2. **コスト** — Claude API は呼ぶたびに数円〜数十円かかる。無差別に全行を AI に投げると月予算をすぐ超える
+3. **速度** — 数百行の CSV を数秒で処理してユーザーを待たせない
+4. **プライバシー** — クレジットカード明細という PII を最小限の外部送信に留める（NFR-S-10）
+
+要件定義書 §5 で「Tier 1 規則ベース → Tier 2 パターン検出 → Tier 3 Claude API」の階層化が指定されている。本 ADR はこの階層構造を採択する判断と各段の責務を確定させる。
+
+## 検討した選択肢
+
+### A. すべて AI に丸投げ（Tier 3 のみ）
+- メリット: 実装がシンプル
+- デメリット:
+  - 50 行 CSV ＝ 1 リクエストでも、毎月複数ユーザー × 複数 CSV で API コストが嵩む
+  - "NETFLIX.COM" のような確定的にわかる行も AI に投げてしまうのは無駄
+  - レイテンシが API 応答に常に縛られる
+
+### B. すべて規則ベース（Tier 1 のみ）
+- メリット: 速い、無料、決定的
+- デメリット:
+  - ServiceTemplate にない未知サービスを取りこぼす
+  - パターンは保守し続けないと陳腐化する
+  - 差別化の核（AI 抽出）が無くなる
+
+### C. 階層化（Tier 1 → Tier 2 → Tier 3）— 採択
+- メリット:
+  - 確定できる行を高速・無料で消化（Tier 1 で 6〜8 割を見込む）
+  - 規則に無いが繰返しパターンがあるものを履歴照合で拾う（Tier 2）
+  - 残りだけ AI に投げる → API コストとレイテンシを最小化
+- デメリット:
+  - 実装ファイル数が増える（3 つの分類器 + パイプライン統合）
+  - 各段の責務とフォールバック挙動を明文化しないと混乱する
+
+## 決定
+
+**C を採択し、各 Tier の責務を以下に固定する。**
+
+### Tier 1: `Classifiers::RuleClassifier`
+- ServiceTemplate.match_patterns（正規表現の配列）に対して description をマッチ
+- ヒット → confidence 1.0 で確定、subscription として `classified` バケットへ
+- ヒットしない → そのまま `unclassified` を返し、Tier 2 へ流す
+- 計算量: O(rows × templates)、ServiceTemplate は起動時にメモリキャッシュ
+
+### Tier 2: `Classifiers::PatternClassifier`
+- 入力: Tier 1 で `unclassified` だった行
+- ユーザーの過去 transactions テーブルを参照
+- 同 description + 同 amount が直近 N ヶ月（既定 3）に M 件（既定 2）以上 → サブスク候補
+- ヒット → confidence 0.7 で `classified`、はずれ → `unclassified` を返し Tier 3 へ
+- ユーザー単位で過去履歴を見る（テナント分離）
+
+### Tier 3: `Classifiers::AiClassifier`
+- 入力: Tier 1/2 でも判定できなかった行
+- Anthropic Claude API（`claude-sonnet-4-6`）にバッチ 50 件 / req で投げる
+- 出力: subscription / non_subscription それぞれに classifier "ai" + confidence + 推定サービス名・カテゴリ
+- API 失敗（レート制限・JSON パース失敗・タイムアウト）→ 該当バッチ全体を `unclassified` として返し unknown 扱い
+- **PII マスキング（NFR-S-10）**: 連続 4 桁以上の数字を `XXXX` に置換、user_id/email は payload に含めない
+- **プロンプトキャッシュ**: system プロンプトに `cache_control: ephemeral` を付与、同一ユーザーの連続インポートでコスト削減
+- **指数バックオフリトライ**: レート制限・サーバー過負荷で最大 3 回リトライ
+
+### パイプライン統合（`ProcessCsvJob`）
+```
+parse → Tier 1 → Tier 2 → Tier 3 → save_transactions → purge_csv_file (NFR-S-09)
+```
+ステータス遷移: `processing → rule_matching → ai_analyzing → completed`
+
+ユーザーは抽出結果レビュー画面でチェック除外・サービス名/カテゴリ修正をしたうえで、選択した行を Subscription にまとめて変換する。
+
+## 結果
+
+### ポジティブ
+- Tier 1 で多くの行を高速消化、API コストが Tier 3 に届く件数に比例（典型的に元の 2〜3 割程度）
+- API 障害時もパイプライン全体は止まらず、unknown 扱いで保存・後でユーザーがレビュー可能
+- 各分類器の責務が単一、ユニットテストしやすい
+- 将来、Tier 4（カスタム ML モデル）を挟む余地もある
+
+### ネガティブ・トレードオフ
+- 実装ファイルが増えた（3 つの分類器 + ADR）
+- Tier 1 の正規表現パターンを保守する手間（ServiceTemplate.match_patterns の更新）
+- AI 出力の信頼度を最終的にユーザーが目視確認する設計のため、完全自動化はしていない
+
+### フォローアップ
+- Phase 4: Cloud Tasks への移行検討（ADR-0003 と統合判断）
+- Phase 5: Anthropic Console での月予算アラート設定
+- 学習データ蓄積: ユーザーがレビュー時に AI 判定を修正したケースを匿名化保存して将来の Tier 1 パターン強化に活かす（v2 以降）
+
+## 参考
+
+- 要件定義書 §5 AI 抽出ロジック
+- 設計書 §3.2 AI Classifier
+- ADR-0005 CSV PII 保護戦略
+- Anthropic Prompt Caching: https://platform.claude.com/docs/en/build-with-claude/prompt-caching

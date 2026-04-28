@@ -2,6 +2,7 @@
 import { Application } from "@hotwired/stimulus"
 import TemplatePickerController from "controllers/template_picker_controller"
 import FileUploadController from "controllers/file_upload_controller"
+import CsvReviewController from "controllers/csv_review_controller"
 
 const application = Application.start()
 application.debug = false
@@ -9,3 +10,4 @@ window.Stimulus = application
 
 application.register("template-picker", TemplatePickerController)
 application.register("file-upload", FileUploadController)
+application.register("csv-review", CsvReviewController)

@@ -1,6 +1,14 @@
 class Subscription < ApplicationRecord
   belongs_to :user
 
+  # CSV 取り込みのレビュー画面で「このサブスクとして登録した」と紐付けた transactions。
+  # サブスクを削除しても取引履歴自体は残し、紐付けだけ外す（dependent: :nullify）。
+  has_many :matched_transactions,
+           class_name: "Transaction",
+           foreign_key: :matched_subscription_id,
+           inverse_of: :matched_subscription,
+           dependent: :nullify
+
   enum :billing_cycle, {
     monthly: 0,
     yearly: 1,
