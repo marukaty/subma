@@ -46,44 +46,131 @@
     <% end %>
   </div>
 
-  <%# 抽出結果 %>
+  <%# 抽出結果レビュー %>
   <% if @csv_import.status_completed? && @transactions.any? %>
-    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div class="p-4 border-b border-gray-100">
-        <h2 class="text-sm font-semibold text-gray-700">抽出結果（<%= @transactions.size %> 件）</h2>
-        <p class="text-xs text-gray-500 mt-0.5">PR-C で「サブスク一括登録」機能を追加予定</p>
-      </div>
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-          <tr>
-            <th class="text-left px-4 py-3">日付</th>
-            <th class="text-left px-4 py-3">利用店名</th>
-            <th class="text-right px-4 py-3">金額</th>
-            <th class="text-left px-4 py-3">判定</th>
-            <th class="text-left px-4 py-3">判定方法</th>
-            <th class="text-left px-4 py-3">推定サービス</th>
-            <th class="text-left px-4 py-3">推定カテゴリ</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <% @transactions.each do |tx| %>
-            <tr class="<%= tx.classification_subscription? ? 'bg-blue-50/40' : '' %>">
-              <td class="px-4 py-3 text-gray-600"><%= tx.transaction_date.strftime("%Y/%m/%d") %></td>
-              <td class="px-4 py-3 font-medium text-gray-800"><%= tx.description %></td>
-              <td class="px-4 py-3 text-right text-gray-800">¥<%= number_with_delimiter(tx.amount.to_i) %></td>
-              <td class="px-4 py-3">
-                <span class="text-xs font-medium px-2 py-0.5 rounded-full
-                  <%= tx.classification_subscription? ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500' %>">
-                  <%= t_csv_classification(tx.classification) %>
-                </span>
-              </td>
-              <td class="px-4 py-3 text-xs text-gray-500"><%= tx.classifier %></td>
-              <td class="px-4 py-3 text-gray-700"><%= tx.inferred_service_name || "—" %></td>
-              <td class="px-4 py-3 text-gray-700"><%= tx.inferred_category || "—" %></td>
-            </tr>
+    <% sub_txs = @transactions.select(&:classification_subscription?) %>
+    <% other_txs = @transactions.reject(&:classification_subscription?) %>
+
+    <%= form_with(url: register_csv_import_path(@csv_import), method: :post, local: true,
+                  data: {
+                    controller: "csv-review",
+                    action: "submit->csv-review#confirmSubmit"
+                  }) do %>
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-700">抽出結果レビュー</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+              チェック済みの行をサブスクとして登録します。サービス名・カテゴリは編集できます。
+            </p>
+          </div>
+          <% if sub_txs.any? %>
+            <%= submit_tag "選択した #{sub_txs.size} 件を登録する",
+                  data: { csv_review_target: "submitBtn" },
+                  class: "px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 cursor-pointer" %>
           <% end %>
-        </tbody>
-      </table>
+        </div>
+
+        <% if sub_txs.any? %>
+          <div class="px-4 py-2 bg-blue-50/40 border-b border-gray-100">
+            <p class="text-xs font-medium text-blue-700">サブスク判定（<%= sub_txs.size %> 件）</p>
+          </div>
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+              <tr>
+                <th class="px-3 py-2 w-8">
+                  <input type="checkbox" checked
+                         data-csv-review-target="selectAll"
+                         data-action="change->csv-review#toggleAll"
+                         class="h-4 w-4 rounded border-gray-300">
+                </th>
+                <th class="text-left px-3 py-2">日付</th>
+                <th class="text-left px-3 py-2">利用店名（マスク済み）</th>
+                <th class="text-right px-3 py-2 w-24">金額</th>
+                <th class="text-left px-3 py-2">サービス名</th>
+                <th class="text-left px-3 py-2 w-32">カテゴリ</th>
+                <th class="text-left px-3 py-2 w-24">判定方法</th>
+                <th class="text-left px-3 py-2 w-20">信頼度</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <% sub_txs.each do |tx| %>
+                <tr>
+                  <td class="px-3 py-2">
+                    <input type="checkbox" name="selections[<%= tx.id %>][include]" value="1" checked
+                           data-csv-review-target="row"
+                           data-action="change->csv-review#rowChanged"
+                           class="h-4 w-4 rounded border-gray-300">
+                  </td>
+                  <td class="px-3 py-2 text-gray-600 text-xs"><%= tx.transaction_date.strftime("%Y/%m/%d") %></td>
+                  <td class="px-3 py-2 text-gray-700"><%= tx.description %></td>
+                  <td class="px-3 py-2 text-right">
+                    <input type="number" name="selections[<%= tx.id %>][amount]" value="<%= tx.amount.to_i %>"
+                           class="w-20 text-right border border-gray-200 rounded px-2 py-0.5 text-sm">
+                  </td>
+                  <td class="px-3 py-2">
+                    <input type="text" name="selections[<%= tx.id %>][service_name]"
+                           value="<%= tx.inferred_service_name || tx.description %>"
+                           class="w-full border border-gray-200 rounded px-2 py-0.5 text-sm">
+                  </td>
+                  <td class="px-3 py-2">
+                    <input type="text" name="selections[<%= tx.id %>][category]"
+                           value="<%= tx.inferred_category %>"
+                           class="w-full border border-gray-200 rounded px-2 py-0.5 text-sm">
+                  </td>
+                  <td class="px-3 py-2 text-xs text-gray-500"><%= tx.classifier %></td>
+                  <td class="px-3 py-2 text-xs text-gray-500">
+                    <%= tx.confidence ? "#{(tx.confidence * 100).round}%" : "—" %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="p-8 text-center text-gray-400 text-sm">
+            サブスクと判定された取引はありません
+          </div>
+        <% end %>
+      </div>
+
+      <% if other_txs.any? %>
+        <details class="bg-white rounded-2xl shadow-sm mt-4">
+          <summary class="p-4 cursor-pointer text-sm text-gray-600 hover:bg-gray-50">
+            その他の取引（<%= other_txs.size %> 件）— サブスクではない / 未判定
+          </summary>
+          <table class="w-full text-sm border-t border-gray-100">
+            <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
+              <tr>
+                <th class="text-left px-3 py-2">日付</th>
+                <th class="text-left px-3 py-2">利用店名</th>
+                <th class="text-right px-3 py-2">金額</th>
+                <th class="text-left px-3 py-2">判定</th>
+                <th class="text-left px-3 py-2">判定方法</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <% other_txs.each do |tx| %>
+                <tr>
+                  <td class="px-3 py-2 text-gray-600 text-xs"><%= tx.transaction_date.strftime("%Y/%m/%d") %></td>
+                  <td class="px-3 py-2 text-gray-700"><%= tx.description %></td>
+                  <td class="px-3 py-2 text-right text-gray-700">¥<%= number_with_delimiter(tx.amount.to_i) %></td>
+                  <td class="px-3 py-2">
+                    <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                      <%= t_csv_classification(tx.classification) %>
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 text-xs text-gray-400"><%= tx.classifier || "—" %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </details>
+      <% end %>
+    <% end %>
+
+  <% elsif @csv_import.status_completed? && @transactions.empty? %>
+    <div class="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400 text-sm">
+      取引が抽出されませんでした
     </div>
   <% elsif @csv_import.status_failed? %>
     <div class="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">

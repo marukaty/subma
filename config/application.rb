@@ -33,7 +33,10 @@ module Subma
     # These settings can be overridden in specific environments using the files
     # in config/environments, which are processed later.
     #
-    # config.time_zone = "Central Time (US & Canada)"
+    # 表示・処理タイムゾーンは日本時間（JST）。DB には UTC で保存される（active_record.default_timezone のデフォルト）。
+    # ActiveRecord の timestamp 系メソッドは TimeWithZone を返し、strftime 等で自動的に JST で表示される。
+    config.time_zone = "Tokyo"
+
     # config.eager_load_paths << Rails.root.join("extras")
 
     # Don't generate system test files.

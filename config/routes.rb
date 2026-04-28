@@ -22,8 +22,12 @@ Rails.application.routes.draw do
   # ServiceTemplate（プルダウン用 JSON）
   resources :service_templates, only: [ :index ]
 
-  # CSV 取り込み（PR-B: アップロード + 進捗、PR-C でレビュー画面拡張）
-  resources :csv_imports, only: [ :index, :new, :create, :show ]
+  # CSV 取り込み
+  resources :csv_imports, only: [ :index, :new, :create, :show ] do
+    member do
+      post :register  # PR-C: 抽出結果レビュー → Subscription 一括登録
+    end
+  end
 
   # 設定
   resource :settings, only: [ :show, :update ]
