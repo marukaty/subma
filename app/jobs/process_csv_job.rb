@@ -1,14 +1,14 @@
-# Phase 3 PR-B: CSV 取り込みパイプライン（Tier 1 + Tier 2 まで）
-# Tier 3 (Claude API) は PR-C で追加予定
+# Phase 3: CSV 取り込みパイプライン（Tier 1 + Tier 2 + Tier 3）
 #
 # パイプライン:
 #   1. Active Storage の attached file を一時パスに展開
 #   2. Csv::Parser で行配列を取得
-#   3. Tier 1 RuleClassifier で確定できる行を分類
-#   4. Tier 2 PatternClassifier で候補を絞り込み
-#   5. Transaction レコードに保存（classification / classifier / confidence 等）
-#   6. CsvImport.status を completed に
-#   7. **アップロードファイルを purge**（NFR-S-09）
+#   3. Tier 1 RuleClassifier で確定できる行を分類（confidence 1.0）
+#   4. Tier 2 PatternClassifier で候補を絞り込み（confidence 0.7）
+#   5. Tier 3 AiClassifier で残りを Claude API で判定（NFR-S-10 PII マスキング）
+#   6. Transaction レコードに保存（classification / classifier / confidence 等）
+#   7. CsvImport.status を completed に
+#   8. **アップロードファイルを purge**（NFR-S-09）
 #
 # 失敗時は status: :failed にして CsvImport を残し、ファイルも削除する
 class ProcessCsvJob < ApplicationJob
@@ -29,8 +29,13 @@ class ProcessCsvJob < ApplicationJob
     # Tier 2: パターン検出（Tier 1 でマッチしなかったものに対して）
     pattern_result = Classifiers::PatternClassifier.new(user: user).classify(rule_result.unclassified)
 
-    classified_rows = rule_result.classified + pattern_result.classified
-    unknown_rows = pattern_result.unclassified  # PR-C で AI に投げる対象
+    # Tier 3: Claude API（Tier 1/2 でも判定できなかったものを AI に投げる）
+    csv_import.update!(status: :ai_analyzing)
+    ai_result = ai_classifier.classify(pattern_result.unclassified)
+
+    classified_rows = rule_result.classified + pattern_result.classified + ai_result.classified
+    # ai_result.unclassified は AI も判定できなかった or API 失敗で unknown 扱いで保存
+    unknown_rows = ai_result.unclassified
 
     save_transactions(csv_import, user, classified_rows, unknown_rows)
 
@@ -45,6 +50,11 @@ class ProcessCsvJob < ApplicationJob
   end
 
   private
+
+  # AI クライアントは差し替え可能（テストや将来の Tier 3 切替を想定）
+  def ai_classifier
+    @ai_classifier ||= Classifiers::AiClassifier.new
+  end
 
   def parse_attached_file(csv_import)
     raise "no file attached" unless csv_import.file.attached?
