@@ -1,7 +1,7 @@
 # ADR-0003: CSV 処理パイプラインの非同期実行アーキテクチャ
 
-- **ステータス**: 採択（Phase 4 で再評価予定）
-- **日付**: 2026-04-27
+- **ステータス**: 採択（Phase 4 で **本番のみ Cloud Tasks に置換** に更新）
+- **日付**: 2026-04-27（初版）／ 2026-05-05（Phase 4 追記）
 - **決定者**: なみ屋
 - **関連 ADR**: ADR-0004（AI Classifier の階層化）、ADR-0005（CSV PII 保護）
 
@@ -71,3 +71,69 @@ CSV 取り込みは以下の長時間処理を含み、リクエスト・レス�
 
 - 設計書 §5 CSV 処理フロー
 - Sidekiq: https://github.com/sidekiqlabs/sidekiq
+
+---
+
+## Phase 4 追記（2026-05-05）: 本番のみ Cloud Tasks に置換
+
+### 背景
+
+Phase 4（D-1 構成）では本番を Cloud Run + Cloud SQL の最小構成にしたい。
+Sidekiq + Redis を本番で動かすには Memorystore for Redis（最低 $40/月〜）が必要となり、月額目安 $8〜17 の D-1 構成と整合しない。
+
+### 決定
+
+- **dev / test 環境は引き続き Sidekiq + Redis**（既存ローカル開発体験を維持）
+- **production 環境のみ Cloud Tasks** に置換（HTTP push → Cloud Run 内同期実行）
+
+新規コンポーネント:
+
+| コンポーネント | 役割 |
+|---|---|
+| `CsvProcessingDispatcher` | `Rails.env.production?` で振り分け。dev/test=`ProcessCsvJob.perform_later`、prod=`Google::Cloud::Tasks` で HTTP push タスクを enqueue |
+| `Internal::JobsController#process_csv` | Cloud Tasks からの POST 受け口。OIDC 検証後 `ProcessCsvJob#perform` を**同期実行** |
+| `OidcVerifier` | Google OIDC ID トークンの署名・iss・aud・exp を検証 |
+
+データフロー（本番）:
+
+```
+[ User Browser ]
+  ↓ POST /csv_imports
+[ CsvImportsController#create ]
+  ↓ CsvProcessingDispatcher.dispatch(csv_import)
+[ Cloud Tasks Queue ]  ← HTTP push タスクを enqueue
+  ↓ POST /internal/jobs/process_csv (Authorization: Bearer <oidc_id_token>)
+[ Internal::JobsController#process_csv ]
+  ↓ OidcVerifier で検証
+  ↓ ProcessCsvJob#perform を同期実行（Cloud Run プロセス内）
+[ Transactions / CsvImport.status 更新 ]
+```
+
+### 採択理由
+
+- **コスト最適**: Memorystore（$40+/月）回避、Cloud Tasks は無料枠 100 万 req/月
+- **Cloud Run と親和性が高い**: スケール 0 でも Cloud Tasks 側でリトライ・タイムアウトを管理
+- **OIDC 認証で安全**: 受信エンドポイント `/internal/jobs/*` は Google 発行の ID トークンのみ受け付け
+- **dev 環境を破壊しない**: 既存 Sidekiq セットアップそのまま、`ProcessCsvJob` のロジックも変更なし
+
+### ネガティブ・トレードオフ
+
+- **dev と prod でジョブ実行経路が異なる**: 動作差を吸収するため Dispatcher を 1 箇所に集約
+- **OIDC 検証の運用責任**: 公開証明書のキャッシュ TTL（1h）・rotation を考慮
+- **Cloud Tasks のタイムアウト上限**: HTTP push は最大 30 分。AI 抽出が長引いた場合は分割の検討が必要
+
+### 必要な環境変数（production のみ）
+
+```
+GCP_PROJECT_ID            # GCP プロジェクト ID
+GCP_LOCATION              # 例: asia-northeast1
+CLOUD_TASKS_QUEUE         # 例: process-csv
+CLOUD_TASKS_TARGET_URL    # 例: https://subma-XXX.run.app/internal/jobs/process_csv
+CLOUD_TASKS_SA_EMAIL      # Cloud Tasks が OIDC を発行する Service Account のメール
+ENABLE_OIDC_VERIFICATION  # production では常に true（dev で疎通確認したい場合に true 化）
+```
+
+### 後続 PR
+
+- **Phase 4 PR-B**: Terraform で Cloud Tasks Queue / Cloud Run / Cloud SQL / Secret Manager を定義
+- **Phase 4 PR-C**: 実 GCP プロジェクトへのデプロイ・統合動作確認
