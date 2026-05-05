@@ -1,0 +1,44 @@
+name: Terraform
+
+# infra/terraform 配下の .tf に対して、PR 時に fmt と validate を実行する。
+# 実 plan / apply は GCP 認証が必要なため PR-C で別ワークフローとして追加する。
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "infra/terraform/**"
+
+permissions:
+  contents: read
+
+jobs:
+  fmt-validate:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      # validate は backend init を必要とするので、backend 部分を除外して init する
+      - name: Terraform init (backend 無効)
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate -no-color

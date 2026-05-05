@@ -36,3 +36,13 @@
 
 /app/assets/builds/*
 !/app/assets/builds/.keep
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/*.tfvars
+infra/terraform/*.tfvars.json
+infra/terraform/plan.out
+infra/terraform/.terraformrc
