@@ -32,6 +32,11 @@ Rails.application.routes.draw do
   # 設定
   resource :settings, only: [ :show, :update ]
 
+  # Phase 4: Cloud Tasks からの HTTP push 受信エンドポイント（OIDC 検証必須）
+  namespace :internal do
+    post "jobs/process_csv" => "jobs#process_csv", as: :jobs_process_csv
+  end
+
   # ルート
   root to: redirect { |_, req|
     # NOTE: redirect の中で session を直接見る方法はないため、

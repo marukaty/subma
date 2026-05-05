@@ -33,7 +33,9 @@ class CsvImportsController < ApplicationController
     csv_import.file.attach(file)
     @audit_resource = csv_import
 
-    ProcessCsvJob.perform_later(csv_import.id)
+    # Phase 4: 直接 ProcessCsvJob.perform_later を呼ばず、ディスパッチャ経由にする
+    # （dev/test=Sidekiq、production=Cloud Tasks）
+    CsvProcessingDispatcher.dispatch(csv_import)
 
     redirect_to csv_import_path(csv_import), notice: "アップロードしました。AI が抽出中です..."
   end
