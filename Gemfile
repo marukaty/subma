@@ -51,7 +51,7 @@ end
 
 gem "rspec-rails", "~> 8.0", groups: [ :development, :test ]
 gem "capybara", "~> 3.40", groups: [ :development, :test ]
-gem "selenium-webdriver", "~> 4.43", groups: [ :development, :test ]
+gem "selenium-webdriver", "~> 4.44", groups: [ :development, :test ]
 
 gem "jwt", "~> 3.2"
 gem "importmap-rails", "~> 2.2"
