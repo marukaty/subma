@@ -50,6 +50,11 @@ test:
 #
 production:
   <<: *default
-  database: subma_production
-  username: subma
-  password: <%= ENV["SUBMA_DATABASE_PASSWORD"] %>
+  database: <%= ENV.fetch("DATABASE_NAME") { "subma_production" } %>
+  username: <%= ENV.fetch("DATABASE_USERNAME") { "subma_app" } %>
+  password: <%= ENV["DATABASE_PASSWORD"] %>
+  # Cloud Run から Cloud SQL に接続する場合は DATABASE_HOST が
+  # `/cloudsql/<project>:<region>:<instance>` 形式の Unix ソケットパス。
+  # mysql2 は host にソケットパスを渡すと自動でソケット接続する。
+  host: <%= ENV["DATABASE_HOST"] %>
+  socket: <%= ENV["DATABASE_HOST"]&.start_with?("/") ? ENV["DATABASE_HOST"] : nil %>

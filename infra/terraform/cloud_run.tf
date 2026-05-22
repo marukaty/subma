@@ -63,10 +63,7 @@ resource "google_cloud_run_v2_service" "web" {
         value = "production"
       }
 
-      env {
-        name  = "PORT"
-        value = "8080"
-      }
+      # PORT は Cloud Run が自動でセットするため明示禁止（Reserved env name）
 
       # database.yml で参照する想定の環境変数
       env {
@@ -154,12 +151,12 @@ resource "google_cloud_run_v2_service" "web" {
       }
 
       # CLOUD_TASKS_TARGET_URL は Cloud Run の URL に依存するため、
-      # Terraform 上では URL 取得後に再 apply で設定する。
-      # PR-C のデプロイスクリプトで設定する想定。
-      # ここではプレースホルダ（実 URL は実 apply 時に上書き）。
+      # Terraform リソース自体は self-reference 不可。
+      # 初回 apply 後に判明する URL を一度だけハードコード。
+      # service を削除して再作成すると URL のハッシュ部分が変わる可能性があるので注意。
       env {
         name  = "CLOUD_TASKS_TARGET_URL"
-        value = "https://placeholder-set-after-first-apply.example.com/internal/jobs/process_csv"
+        value = "[production-url]/internal/jobs/process_csv"
       }
 
       env {
