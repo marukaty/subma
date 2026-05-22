@@ -1,0 +1,94 @@
+name: Deploy to Cloud Run
+
+# main へのマージで自動デプロイ。手動 dispatch も可能。
+#
+# 認証: GitHub OIDC + Workload Identity Federation（長期 SA キー不要）
+# 流れ:
+#   1. Build container image
+#   2. Push to Artifact Registry
+#   3. Deploy to Cloud Run（image 差し替えのみ、env や設定は Terraform 管理）
+#   4. db:migrate を Cloud Run Job として実行
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'development-log.md'
+      - '*.md'
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: asia-northeast1
+  AR_REPO: subma
+  IMAGE_NAME: subma-web
+  CLOUD_RUN_SERVICE: subma-web
+
+permissions:
+  contents: read
+  id-token: write  # OIDC 必須
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build container image
+        run: |
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:${GITHUB_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+          docker build -t "${IMAGE_URI}" -t "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:latest" .
+
+      - name: Push to Artifact Registry
+        run: |
+          docker push "${IMAGE_URI}"
+          docker push "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}:latest"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${CLOUD_RUN_SERVICE}" \
+            --image="${IMAGE_URI}" \
+            --region="${GCP_REGION}" \
+            --quiet
+
+      - name: Run database migration as Cloud Run Job
+        # Cloud Run Job は Terraform 側で定義済み（infra/terraform/cloud_run_jobs.tf）
+        # ここでは image を最新に差し替えて execute するだけ。
+        run: |
+          JOB_NAME="${CLOUD_RUN_SERVICE}-migrate"
+          gcloud run jobs update "${JOB_NAME}" \
+            --image="${IMAGE_URI}" \
+            --region="${GCP_REGION}" \
+            --quiet
+          gcloud run jobs execute "${JOB_NAME}" \
+            --region="${GCP_REGION}" \
+            --wait \
+            --quiet
+
+      - name: Show service URL
+        run: |
+          URL=$(gcloud run services describe "${CLOUD_RUN_SERVICE}" \
+            --region="${GCP_REGION}" \
+            --format="value(status.url)")
+          echo "🚀 Deployed: ${URL}"
+          echo "## Deployment URL" >> $GITHUB_STEP_SUMMARY
+          echo "${URL}" >> $GITHUB_STEP_SUMMARY
