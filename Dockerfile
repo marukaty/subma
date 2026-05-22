@@ -66,6 +66,8 @@ COPY --chown=rails:rails --from=build /rails /rails
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
-# Start server via Thruster by default, this can be overwritten at runtime
-EXPOSE 80
-CMD ["./bin/thrust", "./bin/rails", "server"]
+# Cloud Run では HTTPS 終端は Cloud Run 側が行うため Thruster 不要。
+# Puma を直接起動し、Cloud Run が設定する PORT 環境変数を尊重する。
+# 0.0.0.0 にバインドして全インターフェースで listen。
+EXPOSE 8080
+CMD ["./bin/rails", "server", "-b", "0.0.0.0"]
