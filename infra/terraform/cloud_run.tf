@@ -124,14 +124,21 @@ resource "google_cloud_run_v2_service" "web" {
         value = var.firebase_auth_domain
       }
 
+      # アプリ側 view では FIREBASE_API_KEY という名前で参照する
       env {
-        name = "FIREBASE_WEB_API_KEY"
+        name = "FIREBASE_API_KEY"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.subma["firebase-web-api-key"].secret_id
             version = "latest"
           }
         }
+      }
+
+      # ブラウザに渡す Web App ID（公開値なので env 直書き）
+      env {
+        name  = "FIREBASE_APP_ID"
+        value = var.firebase_app_id
       }
 
       # Cloud Tasks 設定（CsvProcessingDispatcher が利用）
