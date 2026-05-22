@@ -4,6 +4,65 @@ Claude Code セッション間の引き継ぎログ。新しいエントリは**
 
 ---
 
+## 2026-05-22 (Phase 4-C: 実 GCP デプロイ)
+
+**着手内容**: Phase 4-C 全タスク（GCP 実プロジェクトへのデプロイ）
+
+**完了**:
+- **A. 事前準備**
+  - Billing アカウント作成（`014ECE-13CC08-5E02B9`）+ `subma-c75ca` 紐付け
+  - 必要 API 18 種有効化（run / sqladmin / cloudtasks / secretmanager / iam / artifactregistry / firestore / 等）
+  - 予算アラート `$300` / 50% / 80% / 95% 通知設定
+  - Terraform state bucket `gs://subma-tfstate` 作成（versioning 有効）
+- **B. Terraform 初回 apply**
+  - `terraform.tfvars` 作成（`subma-c75ca`、master.key、anthropic、firebase 各値）
+  - `terraform init`（GCS backend）
+  - **56 リソース新規作成**: Cloud SQL / Cloud Run / Cloud Run Job / Cloud Storage / Secret Manager × 4 / Service Account × 3 / WIF Pool + Provider / Cloud Tasks / Cloud Scheduler / Firestore / Artifact Registry / IAM bindings / etc.
+  - GitHub Variables 登録（`GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` / `GCP_DEPLOYER_SA`）
+- **C. アプリデプロイ**
+  - `.github/workflows/deploy.yml` 作成（OIDC + WIF + build → push → deploy → migrate Job）
+  - `infra/terraform/cloud_run_jobs.tf` 追加（DB マイグレ用 Cloud Run Job）
+  - Dockerfile を Cloud Run 向けに調整（Thruster → 素 Puma に変更）
+  - 4 回のリトライを経て初回デプロイ成功:
+    1. `PORT` env 予約名エラー → Terraform から削除
+    2. `database.yml` の YAML 構文エラー（コロン含むソケットパス）→ 引用符化
+    3. パスワードに YAML 特殊文字含むエラー → password も引用符化
+    4. mysql2 が TCP 接続を試行 → socket 使用時は host を空文字に
+    5. Puma が PORT 3000 で listen / Thruster 不調 → Thruster 除去
+  - **Cloud Run URL 払い出し**: `https://subma-web-lcl5auumoa-an.a.run.app`
+  - `/up` health check → HTTP 200、`/` → 301 redirect to `/dashboard`
+  - Firebase 認可ドメインに Cloud Run URL 追加（真鈴の手作業）
+  - meta tag の `firebase-api-key` `firebase-app-id` 空白問題発見 → cloud_run.tf を `FIREBASE_API_KEY` / `FIREBASE_APP_ID` env 名に修正
+  - **実 Google ログイン疎通確認 OK**（ダッシュボード遷移成功）
+- **D. ドキュメント**
+  - `docs/infrastructure-notes.md` 作成（求人ポートフォリオ向け公開ノート、Mermaid 全体構成図 / 技術選定理由 / コスト試算 / 運用手順）
+  - `~/.claude-memory/subma_infrastructure_ops.md` 作成（真鈴用プライベート運用メモ、課金停止手順 / トラブルシュート）
+
+**Phase 4-C 完了基準**:
+- ✅ 本番 URL でアプリ稼働
+- ✅ `terraform apply` で本番再構築可能
+- ✅ GitHub Actions 経由で main → 本番自動デプロイ可能
+- ✅ Google ログイン疎通確認
+
+**未完了・次回引き継ぎ**:
+- Phase 5（観測性 & プレゼン）: CI 完成 / SLO 設定 / k6 / README 採用担当向け再構成 / デモ動画 / note 記事
+- 引落リマインドの実通知テスト（Phase 4 タスク内、後回し可能）
+
+**コスト管理**:
+- 月額目安 ~$10〜13（Cloud SQL db-f1-micro が支配的）
+- $300 / 90日 無料クレジット適用、予算アラート設定済み
+- 真鈴の方針: クレジット切れ前に `terraform destroy` で一時停止（ノート D-2 に手順記載）
+
+**ハマったポイント**:
+- Cloud Run の `PORT` env は予約名で明示禁止
+- `database.yml` の env 展開はコロン含む値 / YAML 特殊文字含むパスワード両方で引用符必須
+- mysql2 は host と socket 同時設定時、host を優先して TCP 接続を試みる
+- Rails 8 Dockerfile の Thruster は Cloud Run と相性悪い（PORT 引き継ぎ問題）
+
+**使用モデル**: Opus 4.7
+
+---
+
 ## 2026-04-27 (Phase 1 / Task 1-4)
 
 **着手内容**: Phase 1（セキュリティ基盤 & Firebase Auth）の全タスク

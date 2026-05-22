@@ -48,6 +48,11 @@ variable "firebase_auth_domain" {
   type        = string
 }
 
+variable "firebase_app_id" {
+  description = "Firebase Web App ID（例: 1:330247522102:web:xxx）。ブラウザ側公開値。"
+  type        = string
+}
+
 # ---------- 既定値あり ----------
 
 variable "region" {
