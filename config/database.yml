@@ -55,6 +55,7 @@ production:
   password: <%= ENV["DATABASE_PASSWORD"] %>
   # Cloud Run から Cloud SQL に接続する場合は DATABASE_HOST が
   # `/cloudsql/<project>:<region>:<instance>` 形式の Unix ソケットパス。
-  # mysql2 は host にソケットパスを渡すと自動でソケット接続する。
-  host: <%= ENV["DATABASE_HOST"] %>
-  socket: <%= ENV["DATABASE_HOST"]&.start_with?("/") ? ENV["DATABASE_HOST"] : nil %>
+  # YAML のコロン解釈を回避するため必ず引用符で囲む。
+  # mysql2 は socket: にソケットパスを渡すと自動でソケット接続する。
+  host: "<%= ENV['DATABASE_HOST'] %>"
+  socket: "<%= ENV['DATABASE_HOST'].to_s.start_with?('/') ? ENV['DATABASE_HOST'] : '' %>"
