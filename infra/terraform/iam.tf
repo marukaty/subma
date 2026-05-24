@@ -57,6 +57,14 @@ resource "google_service_account" "cloud_tasks" {
 # Cloud Tasks SA が Cloud Run を invoke できるようにする。
 # Cloud Run service が作成された後に紐づけるため、cloud_run.tf 側で google_cloud_run_v2_service_iam_member として付与。
 
+# Cloud Run runtime SA が Cloud Tasks に「subma-tasks SA で OIDC トークン発行して」と頼めるようにする。
+# これがないと enqueue 時に PermissionDenied (iam.serviceAccounts.actAs) が出る。
+resource "google_service_account_iam_member" "cloud_run_uses_cloud_tasks_sa" {
+  service_account_id = google_service_account.cloud_tasks.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
 # ===================================================================
 # デプロイ用 SA（GitHub Actions OIDC 経由で assume）
 # ===================================================================
