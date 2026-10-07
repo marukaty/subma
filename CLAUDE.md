@@ -1,10 +1,15 @@
 # SubMa プロジェクト固有 ルール
 
-このファイルは **グローバル `~/.claude/CLAUDE.md` のルールを SubMa プロジェクト内では意図的に上書き** するものです。
+このファイルは **グローバル Claude Code 設定のルールを SubMa プロジェクト内では意図的に上書き** するものです。
 
 ## グローバルルールを上書きする理由
 
-[removed]
+グローバルでは「Cloudflare Workers + D1 + Cloudflare Access + Next.js」を標準構成と定義しているが、SubMa は以下の理由で別構成を採用する（合理的な例外）。
+
+- サブスク・取引・ユーザーの関係が複雑で、集計クエリを含むリレーショナルな設計が本質的に必要（MySQL / Cloud SQL）
+- CSV 取込・AI 分類などの非同期ジョブと定期処理が中心で、Rails + Sidekiq + Cloud Tasks / Scheduler の構成が適している
+- Cloud Run は min-instances=0 でスケールゼロでき、利用が少ない期間のコストをほぼゼロにできる
+- Firebase Auth で Google SSO を少ない実装量で提供できる
 
 ## SubMa の固定構成
 
@@ -58,7 +63,7 @@ type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `infra`
 ## セッション開始時の手順
 
 1. `subma/CLAUDE.md`（本ファイル）を読む
-2. `SubMa_Design.md`（設計書）と `SubMa_Requirements.md`（要件）を必要に応じて参照（親フォルダ `[local-path]` の docx）
+2. `SubMa_Design.md`（設計書）と `SubMa_Requirements.md`（要件）を必要に応じて参照（リポジトリ外の親フォルダにある docx）
 3. `development-log.md` の最新エントリで前回コンテキスト把握
 4. 現在の Phase / タスクを宣言してから作業開始
 
@@ -99,8 +104,12 @@ GitHub 無料プランの Private リポではブランチ保護ルール / Rule
 私は作業開始時に以下を確認する:
 1. 現在のブランチが `main` でないこと
 2. もし `main` にいたら、必ず先に `git checkout -b feature/...` でブランチを切ってから作業開始
-3. コミット直前にも再確認、`main` であれば作業を止めて リポジトリオーナーに報告
+3. コミット直前にも再確認、`main` であれば作業を止めてリポジトリオーナーに報告
 
 ### 将来の検討
 - GitHub Pro 有料化（月 $4 程度）でブランチ保護を物理的にかけられる
 - Phase 1 で「main に直接 push されたら CI で失敗させる」GitHub Actions を導入検討
+
+## 書かないこと
+
+応募・求人・企業名・営業などの開発の裏事情、他社名・案件名、課金識別子、本名・ローカルパス・個人メモパス・本番URL、業務用メールは、コード・ドキュメント・ADR・コメント・コミット・PR・issue に書かない。Private でも同じ。技術選定の理由は技術・コスト・運用の根拠で書く。コミット前に `git config user.email` と差分を確認する。

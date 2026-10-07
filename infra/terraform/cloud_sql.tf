@@ -1,7 +1,7 @@
 # Cloud SQL (MySQL 8.0) インスタンス + データベース + ユーザー
 #
 # 設計:
-#   - db-f1-micro（個人開発には十分、$7-10/月）
+#   - db-f1-micro（個人開発規模には十分、$7-10/月）
 #   - パブリック IP 経由（VPC connector を作らない最小構成、Cloud Run から接続）
 #   - パスワードは random_password で自動生成 → Secret Manager に格納
 #   - 自動バックアップは有効（無料枠内）、PITR は無効（コスト節約）

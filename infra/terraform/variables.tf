@@ -49,7 +49,7 @@ variable "firebase_auth_domain" {
 }
 
 variable "firebase_app_id" {
-  description = "Firebase Web App ID（例: 1:[REDACTED]:web:xxx）。ブラウザ側公開値。"
+  description = "Firebase Web App ID（例: 1:<PROJECT_NUMBER>:web:xxx）。ブラウザ側公開値。"
   type        = string
 }
 
@@ -103,4 +103,9 @@ variable "cloud_sql_user_name" {
   description = "Cloud SQL のアプリ用ユーザー名"
   type        = string
   default     = "subma_app"
+}
+
+variable "cloud_tasks_target_url" {
+  description = "Cloud Tasks の配信先 URL（例: https://<cloud-run-service-url>/internal/jobs/process_csv）。初回 apply 後に判明する Cloud Run URL を terraform.tfvars で設定する。"
+  type        = string
 }

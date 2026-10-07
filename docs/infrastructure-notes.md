@@ -1,7 +1,6 @@
 # SubMa インフラ構成ノート
 
 > SubMa の本番インフラをどう設計・構築・運用しているか、技術選定の理由と図解付きで説明します。
-[removed]
 
 ## 目次
 
@@ -29,7 +28,7 @@ graph TB
     Actions[GitHub Actions<br/>CI / Deploy]
   end
 
-  subgraph GCP["Google Cloud Platform ([gcp-project-id])"]
+  subgraph GCP["Google Cloud Platform (<PROJECT_ID>)"]
     direction TB
     AR[Artifact Registry<br/>subma]
     subgraph CloudRun["Cloud Run"]
@@ -48,7 +47,7 @@ graph TB
     SA3{{SA: subma-deployer}}
   end
 
-  subgraph Firebase["Firebase ([gcp-project-id])"]
+  subgraph Firebase["Firebase (<PROJECT_ID>)"]
     Auth[Firebase Auth<br/>Google SSO]
   end
 
@@ -88,16 +87,16 @@ graph TB
 
 | 選択肢 | 採用 | 理由 |
 |---|---|---|
-| **Cloud Run** | ✅ | コンテナを HTTP リクエストだけで起動できる「サーバレスコンテナ」。min-instances=0 で完全にスケールゼロ可能 → 利用が少ない期間の idleも実質無料 |
+| **Cloud Run** | ✅ | コンテナを HTTP リクエストだけで起動できる「サーバレスコンテナ」。min-instances=0 で完全にスケールゼロ可能 → 利用が少ない期間も実質無料 |
 | AWS ECS Fargate | ❌ | 常時 1 タスク稼働で月 $10〜、ALB 別途必須 |
-[removed]
+| Heroku | ❌ | 認証（Firebase Auth）・Firestore と同じ GCP に寄せた方が IAM / Secret / ログを一元管理できる |
 | 自前 VPS | ❌ | TLS 終端・スケール・ロギングを全部自前で組むコスト > サーバレスの便利さ |
 
 ### 2.2 なぜ Cloud SQL（MySQL）か
 
 | 選択肢 | 採用 | 理由 |
 |---|---|---|
-[removed]
+| **Cloud SQL MySQL** | ✅ | リレーショナルが本質に必要（サブスク↔取引の正規化）。Rails との組み合わせ実績が多く、運用ノウハウが豊富 |
 | Firestore single-store | ❌ | サブスク・取引・ユーザーの関係性が複雑、Document DB だと集計クエリが書きにくい |
 | Spanner | ❌ | オーバースペック・コスト高 |
 | AlloyDB | ❌ | 個人開発規模ではオーバースペック |
@@ -108,13 +107,13 @@ graph TB
 
 - Rails 8 標準の Turbo + Stimulus + Tailwind で「サーバ駆動の UX」を実現
 - React/Vue を入れない → ビルド成果物が小さい → Cloud Run のコールドスタートが速い
-[removed]
+- フロントとバックエンドを Rails 1 つに集約し、二重実装（API + SPA）を避ける
 
 詳細: [`docs/adr/0006-hotwire-vs-spa.md`](./adr/0006-hotwire-vs-spa.md)（Phase 5 で書く予定）
 
 ### 2.4 なぜ Terraform（IaC）か
 
-[removed]
+- インフラ構成をコードでレビュー・差分管理できる
 - 「壊しても `terraform apply` で再構築」できる安全網
 - 課金停止のために `destroy` で完全消去できる（運用上の重要メリット）
 
@@ -142,7 +141,7 @@ graph TB
 | エンジン | MySQL 8.0 |
 | Tier | `db-f1-micro`（共有 CPU + 0.6GB RAM）|
 | Disk | PD-SSD 10GB（autoresize=true）|
-| Availability | ZONAL（個人開発用、月 ~$10）|
+| Availability | ZONAL（個人開発規模、月 ~$10）|
 | Backup | 毎日 18:00 UTC、7世代保持 |
 | PITR | 無効（コスト節約）|
 
@@ -190,7 +189,7 @@ GCP API 呼び出し
 
 | バケット | 用途 | 特殊設定 |
 |---|---|---|
-| `[gcp-project-id]-subma-csv-temp` | CSV 一時保管 | **lifecycle: 1日で削除**（PII 永続化防止 / NFR-S-09）|
+| `<PROJECT_ID>-subma-csv-temp` | CSV 一時保管 | **lifecycle: 1日で削除**（PII 永続化防止 / NFR-S-09）|
 | `subma-tfstate` | Terraform state | バージョニング有効 |
 
 ### 3.7 その他
@@ -318,7 +317,7 @@ Cloud Run service の `template[0].containers[0].image` は Terraform の `lifec
 
 ## 7. コスト試算と最適化
 
-### 7.1 月額試算（個人開発運用）
+### 7.1 月額試算（個人開発規模の運用）
 
 | サービス | 月額目安 | 備考 |
 |---|---|---:|
@@ -359,7 +358,7 @@ gcloud auth application-default login
 
 # 2. Terraform state バケット作成 (循環依存回避のため手動)
 gcloud storage buckets create gs://subma-tfstate \
-  --project=[gcp-project-id] \
+  --project=<PROJECT_ID> \
   --location=asia-northeast1 \
   --uniform-bucket-level-access
 
@@ -374,7 +373,7 @@ terraform output workload_identity_provider
 terraform output deployer_service_account
 gh variable set GCP_WIF_PROVIDER --body "$(terraform output -raw workload_identity_provider)"
 gh variable set GCP_DEPLOYER_SA --body "$(terraform output -raw deployer_service_account)"
-gh variable set GCP_PROJECT_ID --body "[gcp-project-id]"
+gh variable set GCP_PROJECT_ID --body "<PROJECT_ID>"
 
 # 5. 初回デプロイ
 git push origin main  # → GitHub Actions が deploy.yml を実行

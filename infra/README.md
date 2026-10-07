@@ -135,7 +135,7 @@ unset GOOGLE_APPLICATION_CREDENTIALS
 
 ### 7. CLOUD_TASKS_TARGET_URL の更新
 
-`cloud_run.tf` の `CLOUD_TASKS_TARGET_URL` は初回 apply 時にプレースホルダ URL になっている。
+`cloud_run.tf` の `CLOUD_TASKS_TARGET_URL` は `var.cloud_tasks_target_url`（terraform.tfvars で設定）から渡す。初回 apply 時はプレースホルダ URL を設定しておく。
 初回 apply 後に Cloud Run の URL が確定するので:
 
 ```bash
