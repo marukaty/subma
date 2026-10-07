@@ -159,11 +159,12 @@ resource "google_cloud_run_v2_service" "web" {
 
       # CLOUD_TASKS_TARGET_URL は Cloud Run の URL に依存するため、
       # Terraform リソース自体は self-reference 不可。
-      # 初回 apply 後に判明する URL を一度だけハードコード。
+      # 初回 apply 後に判明する URL を terraform.tfvars（Git 管理外）の
+      # var.cloud_tasks_target_url に設定する。
       # service を削除して再作成すると URL のハッシュ部分が変わる可能性があるので注意。
       env {
         name  = "CLOUD_TASKS_TARGET_URL"
-        value = "[production-url]/internal/jobs/process_csv"
+        value = var.cloud_tasks_target_url
       }
 
       env {
