@@ -109,7 +109,7 @@ graph TB
 - React/Vue を入れない → ビルド成果物が小さい → Cloud Run のコールドスタートが速い
 - フロントとバックエンドを Rails 1 つに集約し、二重実装（API + SPA）を避ける
 
-詳細: [`docs/adr/0006-hotwire-vs-spa.md`](./adr/0006-hotwire-vs-spa.md)（Phase 5 で書く予定）
+詳細: ADR として Phase 5 で書く予定（番号は採番時に決める）
 
 ### 2.4 なぜ Terraform（IaC）か
 
@@ -156,6 +156,7 @@ VPC connector 不要、Cloud SQL Auth Proxy も Cloud Run が透過的に提供�
 | `anthropic-api-key` | Claude API 呼び出し（Tier 3 分類器）|
 | `firebase-web-api-key` | Browser 側 Firebase SDK 初期化（コードに埋め込まない方針）|
 | `cloud-sql-app-password` | Terraform が `random_password` で自動生成 |
+| `allowed-login-emails` | ログイン許可リスト（カンマ区切りのメールアドレス）。**器だけ Terraform で作り、値は gcloud で帯域外投入**（tfvars・tfstate に個人情報を入れない。手順は 8.5）|
 
 Cloud Run の `env.value_source.secret_key_ref` で参照。アプリコードからは普通の環境変数として読める。
 
@@ -216,6 +217,9 @@ GCP API 呼び出し
 │  - Firebase Auth による Google SSO              │
 │  - Rails 側は自前で RS256 JWT 検証              │
 │  - 公開証明書は 1h キャッシュ                   │
+│  - 許可リスト（招待制 / ADR-0006）:             │
+│    email_verified + Google + 許可メール          │
+│    空なら全員拒否・毎リクエスト再判定            │
 ├───────────────────────────────────────────────┤
 │ レイヤー 3: 認可                               │
 │  - Internal::JobsController は Cloud Tasks SA の│
@@ -261,8 +265,14 @@ sequenceDiagram
     U->>R: POST /auth/sign_in (Bearer JWT)
     R->>FB: 公開証明書取得（1h キャッシュ）
     R->>R: JWT 検証 (iss/aud/exp/iat/sub)
-    R->>R: find_or_create User(firebase_uid)
-    R-->>U: Session Cookie + redirect /dashboard
+    R->>R: LoginAllowlist 判定<br/>(email_verified / google.com / 許可メール)
+    alt 許可リスト外
+        R-->>U: 403 not_allowed（User は作らない）
+    else 許可
+        R->>R: find_or_create User(firebase_uid)
+        R-->>U: Session Cookie + redirect /dashboard
+    end
+    Note over R: 以降の各リクエストでも<br/>User.email を許可リストで再判定し、<br/>外れていればセッション破棄 → /login
 ```
 
 ### 5.2 Cloud Tasks → Internal API（OIDC 認証）
@@ -411,10 +421,72 @@ terraform destroy -auto-approve
 
 | 症状 | 確認先 |
 |---|---|
-| ログインできない | Firebase Auth コンソール / `gcloud run services logs read` |
+| ログインできない | Firebase Auth コンソール / `gcloud run services logs read`（`[auth] sign-in denied reason=...` が出ていれば許可リストで拒否。8.5 を確認）|
 | 500 エラー | Cloud Logging（lograge JSON 検索）|
 | DB 接続エラー | Cloud SQL ダッシュボード / `gcloud sql instances describe` |
 | デプロイ失敗 | GitHub Actions の Job log |
+
+### 8.5 ログイン許可リストの運用（ADR-0006）
+
+許可するメールアドレスは個人情報のため、リポジトリ・Terraform の変数・tfstate には入れない。
+Terraform は Secret `allowed-login-emails` の器と、Cloud Run SA の accessor 権限だけを作る。
+
+**初回導入（Terraform 変更の apply 前後）**
+
+Cloud Run は `version = "latest"` の Secret にバージョンが 1 つも無いとリビジョンを起動できない。
+そのため、Secret の器を先に作り、値を投入してから全体を apply する。
+
+```bash
+cd infra/terraform
+# 1. Secret の器と accessor 権限だけ先に作る
+terraform apply \
+  -target=google_secret_manager_secret.allowed_login_emails \
+  -target=google_secret_manager_secret_iam_member.allowed_login_emails_accessor
+
+# 2. 値を投入（カンマ区切り。シェル履歴に残さないよう、エディタで作った一時ファイルから入れる）
+gcloud secrets versions add allowed-login-emails --data-file=/path/to/allowed-emails.txt
+rm /path/to/allowed-emails.txt
+
+# 3. 全体を apply（Cloud Run に ALLOWED_LOGIN_EMAILS が注入された新リビジョンができる）
+terraform plan -out=plan.out
+terraform apply plan.out
+```
+
+**許可メールの追加・削除**
+
+```bash
+# 新しいバージョンを追加（全件を書き直す。差分ではない）
+gcloud secrets versions add allowed-login-emails --data-file=/path/to/allowed-emails.txt
+
+# Cloud Run は "latest" をリビジョン起動時に読むので、新しいリビジョンを作って反映する
+gcloud run services update subma-web --region=asia-northeast1 \
+  --update-labels=allowlist-rev=$(date +%Y%m%d%H%M%S)
+
+# 古いバージョンを無効化（任意。値の履歴を残さない）
+gcloud secrets versions list allowed-login-emails
+gcloud secrets versions disable <VERSION> --secret=allowed-login-emails
+```
+
+- 新しいリビジョンに切り替わった時点で、リストから外したユーザーは次のリクエストでセッションを破棄される（毎リクエスト再判定）
+- 書式: `a@example.com,b@example.com`。前後の空白と大文字小文字は無視される
+- 空・未設定なら全員拒否（fail-closed）。本番では `*` は無視される
+- 拒否は Cloud Logging の `[auth] sign-in denied reason=<理由> email=<先頭2文字>***@<ドメイン>` と、監査ログ `auth.sign_in_denied` で確認できる
+
+**開発環境**
+
+- `docker-compose.yml` の web は `ALLOWED_LOGIN_EMAILS` 未指定時に `*`（全員許可）。`*` は development / test でだけ有効
+- 許可リストの挙動を手元で確かめるときは `ALLOWED_LOGIN_EMAILS=you@example.com docker compose up` のように上書きする
+
+### 8.6 Firebase コンソールの設定（手作業）
+
+アプリ側の判定に加えて、Firebase 側でもログイン手段を絞る（多層防御）。Terraform 管理外のため手作業で行う。
+
+1. **ログイン方法を Google だけにする**: Firebase コンソール → Authentication → Sign-in method で、Google 以外（メール/パスワード、メールリンク、電話、匿名など）をすべて無効にする
+2. **承認済みドメインを絞る**: Authentication → Settings → Authorized domains から `localhost` など不要なドメインを外し、本番で使うドメインだけにする（開発用に `localhost` が必要なら、開発用の Firebase プロジェクトを分けることを検討する）
+3. **Web API キーを制限する**: Google Cloud コンソール → APIs & Services → Credentials → Firebase の Browser key で
+   - アプリケーションの制限: HTTP リファラー（本番ドメインの `https://<本番ドメイン>/*` と、Firebase の `https://<project>.firebaseapp.com/*`）
+   - API の制限: Identity Toolkit API と Token Service API（Secure Token）だけに絞る
+4. 設定後、許可リストに入っているアカウントでログインでき、入っていないアカウントでは「このサービスは招待制です」が表示されることを本番で確認する
 
 ---
 
