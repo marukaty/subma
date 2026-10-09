@@ -2,7 +2,7 @@
 
 - **ステータス**: 提案中 / 採択 / 廃止 / 置き換え（→ ADR-XXXX）
 - **日付**: YYYY-MM-DD
-- **決定者**: なみ屋
+- **決定者**: Marin Miyazaki
 - **関連 ADR**: なし / ADR-XXXX
 
 ## 背景（Context）
