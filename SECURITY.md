@@ -44,7 +44,10 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 
 - **認証方式**: Firebase Auth（Google SSO）+ 自前 JWT 検証
   - 詳細: [docs/adr/0001-firebase-auth-strategy.md](./docs/adr/0001-firebase-auth-strategy.md)
-- **セッション**: Rails Cookie（HttpOnly, Secure on production, SameSite=Lax）
+- **セッション**: Rails Cookie（HttpOnly, Secure on production, SameSite=Lax, 最終アクセスから 12 時間で失効）
+  - 設定: `config/initializers/session_store.rb`
+  - 本番は `config.force_ssl` / `config.assume_ssl` を有効化（HTTPS へのリダイレクト、HSTS、Secure Cookie）
+- **Host ヘッダ検証**: 本番は環境変数 `APP_HOST`（カンマ区切り）にあるホスト名だけを受け付ける（`/up` は除外）
 - **サインイン時**: `reset_session` でセッション固定化攻撃を防止
 - **JWT 検証**: RS256 / iss / aud / exp / iat / sub の全項目を検証
 
