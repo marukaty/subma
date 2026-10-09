@@ -3,6 +3,12 @@
 Claude Code セッション間の引き継ぎログ。新しいエントリは**先頭**に追加する（最新が上）。
 各 Phase の技術的な記録を要約して残す。
 
+## 担当の切り分け
+
+- **構成の判断（作者）**: 本番を Cloud Run + Cloud SQL の最小構成とし、Memorystore を使わず本番のみ Cloud Tasks に置き換える判断（ADR-0003 Phase 4 追記、コスト根拠）をはじめ、各 ADR の決定は作者が行った。Terraform 定義の PR で確認事項として挙げた GCP プロジェクト ID・state バケット名・削除保護（Cloud SQL / Firestore）の扱いも作者が判断した
+- **運用作業（作者が手元環境で実施）**: Phase 4-C での課金の有効化とプロジェクト紐付け、必要 API の有効化、予算アラート（50% / 80% / 95%）の設定、Terraform state バケットの手動作成、`terraform.tfvars`（Git 管理外）の作成と初回 `terraform apply`、GitHub Variables の登録、Firebase 認可ドメインへの Cloud Run URL の追加、実 Google アカウントでのログイン疎通確認
+- **生成 AI の支援範囲**: Terraform 定義・デプロイ用ワークフロー・初回デプロイ時の修正を含むコードと本ログの記述は、生成 AI（Claude Code）の支援で作成した（Terraform 定義ファイルの冒頭コメントとコミットメッセージの `[ai-assisted]` 表記を参照）。作者が PR の内容を確認してマージし、インフラへの適用を行った
+
 ---
 
 ## 2026-05-22 (Phase 4-C: 実 GCP デプロイ)
