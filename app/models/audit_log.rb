@@ -14,4 +14,8 @@ class AuditLog < ApplicationRecord
   ACTION_AUTH_SIGN_IN = "auth.sign_in".freeze
   ACTION_AUTH_SIGN_IN_FAILED = "auth.sign_in_failed".freeze
   ACTION_AUTH_SIGN_OUT = "auth.sign_out".freeze
+  # 許可リスト（ADR-0006）: ログイン拒否と、ログイン中の締め出し
+  # 拒否された人は User を作らないので user は nil。メールアドレスは監査ログに保存しない
+  ACTION_AUTH_SIGN_IN_DENIED = "auth.sign_in_denied".freeze
+  ACTION_AUTH_SESSION_REVOKED = "auth.session_revoked".freeze
 end

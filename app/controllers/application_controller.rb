@@ -13,6 +13,9 @@ class ApplicationController < ActionController::Base
 
   helper_method :current_user, :user_signed_in?
 
+  # 許可リスト（ADR-0006）で拒否・締め出したときに表示する文言
+  INVITE_ONLY_MESSAGE = "このサービスは招待制です。このアカウントではログインできません。".freeze
+
   # 全書き込み操作で監査ログを記録（NFR-S-05）
   # GET 以外（POST / PATCH / PUT / DELETE）が対象
   # サブクラスで個別記録したい場合は skip_after_action :record_audit_log で除外
@@ -38,10 +41,34 @@ class ApplicationController < ActionController::Base
     Rails.logger.error("[audit] failed to record audit log: #{e.message}")
   end
 
+  # セッションのユーザーを解決する。
+  # 毎リクエスト許可リストを再判定し、許可を外されたユーザーはセッションを破棄して締め出す（ADR-0006）
   def current_user
     return @current_user if defined?(@current_user)
 
-    @current_user = User.find_by(id: session[:user_id])
+    user = session[:user_id].present? ? User.find_by(id: session[:user_id]) : nil
+    if user && !LoginAllowlist.allowed_email?(user.email)
+      revoke_session!(user)
+      user = nil
+    end
+
+    @current_user = user
+  end
+
+  def revoke_session!(user)
+    reset_session
+    @session_revoked = true
+    Rails.logger.warn(
+      "[auth] session revoked (not in allowlist) user_id=#{user.id} email=#{LoginAllowlist.mask_email(user.email)}"
+    )
+    AuditLog.create!(
+      user: user,
+      action: AuditLog::ACTION_AUTH_SESSION_REVOKED,
+      ip_address: request.remote_ip,
+      user_agent: request.user_agent.to_s.first(500)
+    )
+  rescue StandardError => e
+    Rails.logger.error("[audit] failed to record session revocation: #{e.message}")
   end
 
   def user_signed_in?
@@ -50,6 +77,14 @@ class ApplicationController < ActionController::Base
 
   def authenticate_user!
     return if user_signed_in?
+
+    if @session_revoked
+      respond_to do |format|
+        format.html { redirect_to login_path, alert: INVITE_ONLY_MESSAGE }
+        format.json { render json: { error: "not_allowed" }, status: :forbidden }
+      end
+      return
+    end
 
     respond_to do |format|
       format.html { redirect_to login_path, alert: "ログインしてください" }
