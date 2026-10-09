@@ -82,9 +82,23 @@ Rails.application.configure do
   # Enable DNS rebinding protection and other `Host` header attacks.
   # 許可するホスト名は環境変数 APP_HOST から読む（カンマ区切りで複数指定可）。
   # 実際のホスト名はリポジトリに書かず、Terraform から Cloud Run の環境変数として注入する。
-  # 未設定の場合（assets:precompile や Cloud Run Jobs など）は制限をかけない。
-  app_hosts = ENV.fetch("APP_HOST", "").split(",").map(&:strip).reject(&:empty?)
-  if app_hosts.any?
+  #
+  # 設定漏れのまま検証なしで動くことを防ぐため、未設定・空のときは起動時に例外で止める（fail-closed）。
+  # Host ヘッダを受けない用途（イメージ作成時の assets:precompile、マイグレーション用 Cloud Run Job）は
+  # APP_HOST=* を明示的に渡して検証を無効化する。
+  app_host = ENV.fetch("APP_HOST", "").strip
+  app_hosts = app_host.split(",").map(&:strip).reject(&:empty?)
+
+  if app_hosts.empty?
+    raise "APP_HOST is required in production (set APP_HOST=* to disable host authorization explicitly)"
+  elsif app_hosts == [ "*" ]
+    config.hosts.clear
+    config.after_initialize do
+      Rails.logger.warn("APP_HOST=* is set: host authorization disabled")
+    end
+  elsif app_hosts.include?("*")
+    raise "APP_HOST=* must be used alone (got: #{app_host.inspect})"
+  else
     config.hosts = app_hosts
 
     # Skip DNS rebinding protection for the default health check endpoint.
