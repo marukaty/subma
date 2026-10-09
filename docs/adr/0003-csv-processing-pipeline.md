@@ -2,7 +2,7 @@
 
 - **ステータス**: 採択（Phase 4 で **本番のみ Cloud Tasks に置換** に更新）
 - **日付**: 2026-04-27（初版）／ 2026-05-05（Phase 4 追記）
-- **決定者**: なみ屋
+- **決定者**: Marin Miyazaki
 - **関連 ADR**: ADR-0004（AI Classifier の階層化）、ADR-0005（CSV PII 保護）
 
 ## 背景
