@@ -7,6 +7,10 @@
 #   - aud: 期待する受信 URL と一致（initialize 時に audience: で指定）
 #   - iss: "https://accounts.google.com" または "accounts.google.com" と一致
 #   - exp: 未来（JWT gem が自動検証）
+#   - email: 期待する発行元 SA のメールと一致し、email_verified == true
+#     （initialize 時に expected_email: で指定）。
+#     Google の ID トークンは任意の GCP プロジェクトの SA が任意の audience で発行できるため、
+#     aud / iss だけでは「どの SA が発行したか」を区別できない。発行元 SA の確認が必須。
 #
 # 公開証明書は最大 1 時間 Rails.cache にキャッシュする
 # （HTTP の Cache-Control に従うのが理想だが、シンプルさを優先して固定 TTL）。
@@ -30,10 +34,13 @@ class OidcVerifier
   class InvalidTokenError < StandardError; end
 
   # @param audience [String] 期待する OIDC aud クレーム（受信側 URL）
-  def initialize(audience:)
+  # @param expected_email [String] 期待する発行元 Service Account のメール（email クレーム）
+  def initialize(audience:, expected_email:)
     raise ArgumentError, "audience is required" if audience.blank?
+    raise ArgumentError, "expected_email is required" if expected_email.blank?
 
     @audience = audience
+    @expected_email = expected_email
   end
 
   # @param id_token [String] OIDC ID トークン
@@ -63,6 +70,7 @@ class OidcVerifier
       }
     )
 
+    verify_issuer_account!(decoded)
     decoded
   rescue JWT::DecodeError, JWT::VerificationError, JWT::ExpiredSignature,
          JWT::InvalidIssuerError, JWT::InvalidAudError,
@@ -71,6 +79,12 @@ class OidcVerifier
   end
 
   private
+
+  # 署名・aud・iss・exp が正しくても、発行元 SA が想定外なら拒否する
+  def verify_issuer_account!(decoded)
+    raise InvalidTokenError, "email_verified is not true" unless decoded["email_verified"] == true
+    raise InvalidTokenError, "unexpected token email" unless decoded["email"] == @expected_email
+  end
 
   def fetch_certs
     Rails.cache.fetch(CERTS_CACHE_KEY, expires_in: CERTS_CACHE_TTL) do
