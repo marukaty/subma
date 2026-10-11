@@ -167,6 +167,14 @@ resource "google_cloud_run_v2_service" "web" {
         value = var.cloud_tasks_target_url
       }
 
+      # Rails の config.hosts（Host ヘッダ検証）で許可するホスト名。
+      # Cloud Run の URL は self-reference できないため、同じ URL を持つ
+      # var.cloud_tasks_target_url からホスト部分だけを取り出して渡す。
+      env {
+        name  = "APP_HOST"
+        value = regex("^https://([^/]+)", var.cloud_tasks_target_url)[0]
+      }
+
       env {
         name  = "CLOUD_TASKS_SA_EMAIL"
         value = google_service_account.cloud_tasks.email
