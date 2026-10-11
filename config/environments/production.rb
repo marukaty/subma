@@ -21,8 +21,9 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # アップロードされた CSV は Cloud Storage（CSV 一時保管バケット）に置く（config/storage.yml の google）。
+  # Cloud Run は複数インスタンスで動くため、ローカルディスクだと別インスタンスのジョブから読めない。
+  config.active_storage.service = :google
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   # Cloud Run は TLS 終端するプロキシの後ろで動くため、届いたリクエストは HTTPS とみなす。

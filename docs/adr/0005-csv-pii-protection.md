@@ -30,7 +30,10 @@ SubMa はクレジットカード明細 CSV を取り扱うため、以下のリ
 
 ### 1. CSV ファイルの取扱（PR-B で実装）
 
-- アップロード受信後、Active Storage で一時保管（dev: ローカルディスク `tmp/storage`、prod: GCS）
+- アップロード受信後、Active Storage で一時保管（development: ローカルディスク `storage/`、test: `tmp/storage`、production: Cloud Storage の CSV 一時保管バケット `CSV_TEMP_BUCKET`）
+  - 本番を GCS にするのは、Cloud Run が複数インスタンスで動き、アップロードを受けたインスタンスと Cloud Tasks からジョブを受けるインスタンスが別になり得るため（ローカルディスクでは読めない）
+  - GCS への認証は Cloud Run のランタイム SA（ADC）で行い、鍵ファイルは使わない。権限はバケット単位の `roles/storage.objectAdmin` のみ
+  - purge し損ねたオブジェクトはバケットのライフサイクル（1 日で削除）が消す
 - `ProcessCsvJob` の **`ensure` ブロック**で `csv_import.purge_uploaded_file!` を呼び、成功・失敗・例外いずれの場合でも CSV ファイルを削除する
 - DB の `csv_imports` レコード自体は履歴として残すが、ファイル本体は残さない
 
@@ -52,7 +55,7 @@ SubMa はクレジットカード明細 CSV を取り扱うため、以下のリ
 ### ポジティブ
 - NFR-S-09 / NFR-S-10 の要件を満たす
 - データ漏洩面積が最小化される（PII は処理中だけ存在）
-- 将来 GCS に移行しても同じ Active Storage インターフェースで運用継続可能
+- 保存先（ローカル / GCS）を切り替えても、同じ Active Storage インターフェースでコードを変えずに運用できる
 
 ### ネガティブ・トレードオフ
 - ファイル削除後に問題があった場合の再処理は CSV を再アップロードする必要がある
