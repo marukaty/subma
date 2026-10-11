@@ -1,0 +1,29 @@
+# 日本語のメッセージ。既定のロケールは en のままで、
+# CSV 取り込み画面（CsvImportsController#new / #create）だけ ja で表示する。
+ja:
+  errors:
+    format: "%{message}"
+  activemodel:
+    attributes:
+      csv_upload_form:
+        file: "CSV ファイル"
+        format: "フォーマット"
+    errors:
+      models:
+        csv_upload_form:
+          attributes:
+            file:
+              blank: "CSV ファイルを選択してください"
+              invalid_extension: "拡張子が .csv のファイルを選択してください"
+              invalid_content_type: "CSV ファイルとして認識できない形式です（対応: text/csv・text/plain・application/vnd.ms-excel）"
+              empty: "ファイルが空です"
+              too_large: "ファイルサイズは %{max_size} までです"
+              not_csv: "ファイルの中身が CSV ではありません"
+              invalid_encoding: "文字コードを読み取れません（UTF-8 または Shift_JIS の CSV に対応しています）"
+              malformed_csv: "CSV として読み取れません。カード会社からダウンロードした CSV をそのまま選択してください"
+            format:
+              blank: "フォーマットを選択してください"
+              unsupported_format: "対応していないフォーマットです"
+  csv_imports:
+    formats:
+      rakuten: "楽天カード"
