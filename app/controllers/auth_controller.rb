@@ -4,7 +4,10 @@ class AuthController < ApplicationController
 
   # ログイン画面（未ログインのみアクセス想定。ログイン済みならダッシュボードへ）
   def new
-    redirect_to dashboard_path if user_signed_in?
+    return redirect_to dashboard_path if user_signed_in?
+
+    # ログイン中に許可リストから外され、このリクエストで締め出された場合
+    flash.now[:alert] = INVITE_ONLY_MESSAGE if @session_revoked
   end
 
   # Firebase Web SDK が取得した ID トークンを受け取り、検証してセッション開始
@@ -12,6 +15,11 @@ class AuthController < ApplicationController
   def sign_in
     id_token = params[:id_token].to_s
     claims = FirebaseAuthVerifier.new.verify(id_token)
+
+    # 許可リスト判定は User を作る前に行う（拒否した人の User 行を残さない）
+    decision = LoginAllowlist.check(claims)
+    return deny_sign_in(claims, decision.reason) unless decision.allowed?
+
     user = User.from_firebase_claims(claims)
     reset_session
     session[:user_id] = user.id
@@ -35,6 +43,15 @@ class AuthController < ApplicationController
   end
 
   private
+
+  def deny_sign_in(claims, reason)
+    reset_session
+    Rails.logger.warn(
+      "[auth] sign-in denied reason=#{reason} email=#{LoginAllowlist.mask_email(claims["email"])}"
+    )
+    record_auth_log(AuditLog::ACTION_AUTH_SIGN_IN_DENIED, user: nil)
+    render json: { ok: false, error: "not_allowed", message: INVITE_ONLY_MESSAGE }, status: :forbidden
+  end
 
   def record_auth_log(action, user:)
     AuditLog.create!(

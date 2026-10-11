@@ -58,6 +58,8 @@ services:
       RAILS_ENV: development
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
+      # ログイン許可リスト（ADR-0006）。未指定なら "*"（全員許可。development / test でだけ有効）
+      ALLOWED_LOGIN_EMAILS: ${ALLOWED_LOGIN_EMAILS:-*}
       BINDING: "0.0.0.0"
     depends_on:
       db:

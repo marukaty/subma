@@ -11,6 +11,7 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 | T-02 | Claude API 経由の PII 流出 | 個人取引データが Anthropic 側ログに残る | NFR-S-10 (`AiClassifier#mask_pii` で識別子・カード番号末尾を `XXXX` 化) |
 | T-03 | Firebase JWT 偽造 | 他人のアカウントに成りすまし | RS256 公開証明書での厳格な署名検証、iss/aud/exp/iat/sub の全項目検証 |
 | T-04 | セッションハイジャック | アカウント乗っ取り | Cookie HttpOnly + Secure + SameSite=Lax、HSTS、reset_session on sign_in |
+| T-10 | 不特定の第三者によるサインアップ・利用 | データ閲覧・API 利用料の消費 | ログイン許可リスト（招待制）。`email_verified`・`sign_in_provider == google.com`・許可メールの 3 条件、未設定・空なら全員拒否、毎リクエスト再判定（ADR-0006） |
 | T-05 | Secret Manager に入れるべき情報のリポジトリコミット | 漏洩 → サービス停止 | `.env` を `.gitignore`、本番は Secret Manager、CI で git-secrets 系チェック検討 |
 
 ### Secondary（中リスク）
@@ -51,6 +52,8 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
   - `APP_HOST` が未設定・空のときは起動時に例外で停止する（設定漏れのまま検証なしで動かさない）
   - `APP_HOST=*` は検証の明示的な無効化。HTTP を受けない用途（イメージ作成時の `assets:precompile`、マイグレーション用 Cloud Run Job）だけで使い、起動時に警告ログを出す
 - **サインイン時**: `reset_session` でセッション固定化攻撃を防止
+- **許可リスト（招待制）**: `LoginAllowlist` が User 作成前に判定。許可メールは環境変数 `ALLOWED_LOGIN_EMAILS`（本番は Secret Manager）。毎リクエスト再判定し、外れたユーザーのセッションを破棄
+  - 詳細: [docs/adr/0006-login-allowlist.md](./docs/adr/0006-login-allowlist.md)
 - **JWT 検証**: RS256 / iss / aud / exp / iat / sub の全項目を検証
 
 ## CSV 取扱い（Phase 3 で実装）
@@ -71,7 +74,7 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 ## 監査ログ
 
 - `AuditLog` モデルに以下を記録:
-  - 認証イベント: `auth.sign_in` / `auth.sign_in_failed` / `auth.sign_out`
+  - 認証イベント: `auth.sign_in` / `auth.sign_in_failed` / `auth.sign_out` / `auth.sign_in_denied`（許可リストで拒否。user は null、メールは保存しない） / `auth.session_revoked`（ログイン中に許可リストから外れた）
   - 全書き込み操作: `<controller>.<action>` 形式（例: `subscriptions.create`）
   - 関連: user_id（認証前は null）/ resource_type / resource_id / ip_address / user_agent / created_at
 - 保存期間: 90 日（Phase 4 で TTL ジョブ実装予定）
@@ -86,4 +89,5 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 
 - 要件定義書 §6.1 セキュリティ要件
 - ADR-0001 Firebase Auth Strategy
+- ADR-0006 ログイン許可リスト
 - AI_USAGE_GUIDELINE.md
