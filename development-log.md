@@ -11,6 +11,24 @@ Claude Code セッション間の引き継ぎログ。新しいエントリは**
 
 ---
 
+## 2026-10-09 (公開前セキュリティ: ログイン許可リスト)
+
+**完了**:
+- `LoginAllowlist` サービス追加。通す条件は `email_verified == true`・`firebase.sign_in_provider == "google.com"`・許可メール（`ALLOWED_LOGIN_EMAILS`、大文字小文字と前後空白を無視）の 3 つすべて
+- 未設定・空は全環境で全員拒否（fail-closed）。`*` は development / test でだけ全員許可、production では無視
+- `AuthController#sign_in` で User 作成前に判定（拒否時 403 `not_allowed`、User を作らない）。`ApplicationController#current_user` で毎リクエスト再判定し、外れたらセッション破棄
+- 監査ログ `auth.sign_in_denied` / `auth.session_revoked` 追加。ログのメールはマスク（先頭 2 文字 + ドメイン）
+- Terraform: Secret `allowed-login-emails` の器と accessor 権限のみ作成、Cloud Run env に `secret_key_ref` で注入（値は gcloud で帯域外投入）
+- `spec/support/sign_in_helper.rb` を current_user スタブから「verifier スタブ + 実 POST」に変更（締め出しをテストできるように）
+- ADR-0006、`docs/infrastructure-notes.md` 8.5 / 8.6、SECURITY.md 更新
+
+**未完了・次回引き継ぎ**:
+- Secret への値投入と Firebase コンソール設定（手作業。infrastructure-notes 8.5 / 8.6）
+
+**使用モデル**: Opus
+
+---
+
 ## 2026-05-22 (Phase 4-C: 実 GCP デプロイ)
 
 **完了**:
