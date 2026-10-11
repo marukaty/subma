@@ -37,15 +37,18 @@ RSpec.describe "Internal::Jobs", type: :request do
 
     context "OIDC 検証有効（ENABLE_OIDC_VERIFICATION=true）" do
       let(:audience) { "https://subma.example.com/internal/jobs/process_csv" }
+      let(:tasks_sa_email) { "tasks@subma-test.iam.gserviceaccount.com" }
 
       before do
         ENV["ENABLE_OIDC_VERIFICATION"] = "true"
         ENV["CLOUD_TASKS_TARGET_URL"] = audience
+        ENV["CLOUD_TASKS_SA_EMAIL"] = tasks_sa_email
       end
 
       after do
         ENV.delete("ENABLE_OIDC_VERIFICATION")
         ENV.delete("CLOUD_TASKS_TARGET_URL")
+        ENV.delete("CLOUD_TASKS_SA_EMAIL")
       end
 
       it "Authorization ヘッダ無しは 401" do
@@ -61,7 +64,7 @@ RSpec.describe "Internal::Jobs", type: :request do
 
       it "OidcVerifier が InvalidTokenError を投げると 401" do
         verifier = instance_double(OidcVerifier)
-        allow(OidcVerifier).to receive(:new).with(audience: audience).and_return(verifier)
+        allow(OidcVerifier).to receive(:new).with(audience: audience, expected_email: tasks_sa_email).and_return(verifier)
         allow(verifier).to receive(:verify).and_raise(OidcVerifier::InvalidTokenError, "expired")
 
         post url, params: { csv_import_id: csv_import.id }, headers: { "Authorization" => "Bearer fake" }
@@ -71,7 +74,7 @@ RSpec.describe "Internal::Jobs", type: :request do
 
       it "OidcVerifier が成功すれば 200 でジョブ実行" do
         verifier = instance_double(OidcVerifier)
-        allow(OidcVerifier).to receive(:new).with(audience: audience).and_return(verifier)
+        allow(OidcVerifier).to receive(:new).with(audience: audience, expected_email: tasks_sa_email).and_return(verifier)
         allow(verifier).to receive(:verify).and_return("sub" => "tasks-sa")
 
         expect_any_instance_of(ProcessCsvJob).to receive(:perform).with(csv_import.id)
@@ -84,6 +87,75 @@ RSpec.describe "Internal::Jobs", type: :request do
         ENV.delete("CLOUD_TASKS_TARGET_URL")
         post url, params: { csv_import_id: csv_import.id }, headers: { "Authorization" => "Bearer fake" }
         expect(response).to have_http_status(:internal_server_error)
+      end
+
+      it "CLOUD_TASKS_SA_EMAIL が未設定だとジョブを実行せず 500（fail-closed）" do
+        ENV.delete("CLOUD_TASKS_SA_EMAIL")
+        expect_any_instance_of(ProcessCsvJob).not_to receive(:perform)
+
+        post url, params: { csv_import_id: csv_import.id }, headers: { "Authorization" => "Bearer fake" }
+        expect(response).to have_http_status(:internal_server_error)
+      end
+
+      it "CLOUD_TASKS_SA_EMAIL が空文字でもジョブを実行せず 500（fail-closed）" do
+        ENV["CLOUD_TASKS_SA_EMAIL"] = ""
+        expect_any_instance_of(ProcessCsvJob).not_to receive(:perform)
+
+        post url, params: { csv_import_id: csv_import.id }, headers: { "Authorization" => "Bearer fake" }
+        expect(response).to have_http_status(:internal_server_error)
+      end
+
+      context "実トークンで発行元 SA を確認する（OidcVerifier をモックしない）" do
+        let(:rsa_private) { OpenSSL::PKey::RSA.new(2048) }
+        let(:kid) { "test-oidc-kid" }
+        let(:payload) do
+          now = Time.now.to_i
+          {
+            "iss" => "https://accounts.google.com",
+            "aud" => audience,
+            "iat" => now - 60,
+            "exp" => now + 600,
+            "sub" => "12345",
+            "email" => tasks_sa_email,
+            "email_verified" => true
+          }
+        end
+
+        before do
+          cert = OpenSSL::X509::Certificate.new
+          cert.version = 2
+          cert.serial = 1
+          cert.subject = OpenSSL::X509::Name.parse("/CN=test-oidc")
+          cert.issuer = cert.subject
+          cert.public_key = rsa_private.public_key
+          cert.not_before = Time.now - 60
+          cert.not_after = Time.now + 3600
+          cert.sign(rsa_private, OpenSSL::Digest.new("SHA256"))
+          allow_any_instance_of(OidcVerifier).to receive(:fetch_certs).and_return(kid => cert.to_pem)
+        end
+
+        def bearer(claims)
+          { "Authorization" => "Bearer #{JWT.encode(claims, rsa_private, 'RS256', { 'kid' => kid })}" }
+        end
+
+        it "期待する SA が発行したトークンなら 200" do
+          expect_any_instance_of(ProcessCsvJob).to receive(:perform).with(csv_import.id)
+          post url, params: { csv_import_id: csv_import.id }, headers: bearer(payload)
+          expect(response).to have_http_status(:ok)
+        end
+
+        it "別の SA が発行したトークン（aud は正しい）は 401 でジョブを実行しない" do
+          expect_any_instance_of(ProcessCsvJob).not_to receive(:perform)
+          claims = payload.merge("email" => "attacker@other-project.iam.gserviceaccount.com")
+          post url, params: { csv_import_id: csv_import.id }, headers: bearer(claims)
+          expect(response).to have_http_status(:unauthorized)
+        end
+
+        it "email_verified が false なら 401 でジョブを実行しない" do
+          expect_any_instance_of(ProcessCsvJob).not_to receive(:perform)
+          post url, params: { csv_import_id: csv_import.id }, headers: bearer(payload.merge("email_verified" => false))
+          expect(response).to have_http_status(:unauthorized)
+        end
       end
     end
   end

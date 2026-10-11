@@ -3,6 +3,7 @@
 # 設計:
 #   - Cloud Tasks → Cloud Run (本コントローラ) に POST が飛ぶ
 #   - Authorization: Bearer <id_token> を OidcVerifier で検証
+#     （aud = CLOUD_TASKS_TARGET_URL、発行元 email = CLOUD_TASKS_SA_EMAIL）
 #   - 検証が通れば ProcessCsvJob を **同期実行**（Sidekiq を経由しない、Cloud Run プロセス内）
 #   - Cloud Tasks のタイムアウト・リトライ機構に処理時間とエラー処理を任せる
 #
@@ -45,14 +46,20 @@ module Internal
         return
       end
 
-      audience = ENV.fetch("CLOUD_TASKS_TARGET_URL")
-      OidcVerifier.new(audience: audience).verify(token)
+      audience = required_env("CLOUD_TASKS_TARGET_URL")
+      expected_email = required_env("CLOUD_TASKS_SA_EMAIL")
+      OidcVerifier.new(audience: audience, expected_email: expected_email).verify(token)
     rescue OidcVerifier::InvalidTokenError => e
       Rails.logger.warn("[Internal::JobsController] OIDC verify failed: #{e.message}")
       render json: { error: "invalid token" }, status: :unauthorized
     rescue KeyError => e
       Rails.logger.error("[Internal::JobsController] missing env: #{e.message}")
       render json: { error: "server misconfigured" }, status: :internal_server_error
+    end
+
+    # 未設定・空文字はどちらも設定不備として扱い、検証を通さない（fail-closed）
+    def required_env(key)
+      ENV[key].presence || raise(KeyError, "#{key} is not set")
     end
 
     def extract_bearer_token

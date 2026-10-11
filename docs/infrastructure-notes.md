@@ -276,10 +276,13 @@ sequenceDiagram
 
     R->>T: enqueue task with OIDC token request<br/>(SA = subma-tasks, audience = TARGET_URL)
     T->>W: POST /internal/jobs/process_csv<br/>Authorization: Bearer <OIDC token>
-    W->>W: OidcVerifier.verify!<br/>(Google 公開鍵で検証, aud=TARGET_URL)
+    W->>W: OidcVerifier.verify!<br/>(Google 公開鍵で検証, aud=TARGET_URL, email=subma-tasks SA)
     W->>W: ProcessCsvJob 実行
     W-->>T: 200 OK
 ```
+
+- 発行元の確認: Google の ID トークンは任意の GCP プロジェクトの SA が任意の aud で発行できるため、aud / iss に加えて `email` が環境変数 `CLOUD_TASKS_SA_EMAIL` と一致し `email_verified == true` であることを必須にしている。不一致は 401。
+- `CLOUD_TASKS_SA_EMAIL` は Terraform が `google_service_account.cloud_tasks.email` から Cloud Run に注入する（tfvars への手書き不要。enqueue 時の発行 SA と同じ値）。未設定・空ならジョブを実行せず 500 を返す（fail-closed）。
 
 ---
 
