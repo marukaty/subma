@@ -42,6 +42,13 @@ resource "google_cloud_run_v2_job" "migrate" {
           value = "production"
         }
 
+        # マイグレーションは HTTP リクエストを受けないため Host 検証は不要。
+        # production.rb は APP_HOST 未設定だと起動を止めるので、`*` で無効化を明示する。
+        env {
+          name  = "APP_HOST"
+          value = "*"
+        }
+
         env {
           name  = "DATABASE_HOST"
           value = "/cloudsql/${google_sql_database_instance.main.connection_name}"

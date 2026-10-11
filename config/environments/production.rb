@@ -25,13 +25,14 @@ Rails.application.configure do
   config.active_storage.service = :local
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  # config.assume_ssl = true
+  # Cloud Run は TLS 終端するプロキシの後ろで動くため、届いたリクエストは HTTPS とみなす。
+  config.assume_ssl = true
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # config.force_ssl = true
+  config.force_ssl = true
 
   # Skip http-to-https redirect for the default health check endpoint.
-  # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
+  config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
@@ -79,11 +80,28 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
+  # 許可するホスト名は環境変数 APP_HOST から読む（カンマ区切りで複数指定可）。
+  # 実際のホスト名はリポジトリに書かず、Terraform から Cloud Run の環境変数として注入する。
   #
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # 設定漏れのまま検証なしで動くことを防ぐため、未設定・空のときは起動時に例外で止める（fail-closed）。
+  # Host ヘッダを受けない用途（イメージ作成時の assets:precompile、マイグレーション用 Cloud Run Job）は
+  # APP_HOST=* を明示的に渡して検証を無効化する。
+  app_host = ENV.fetch("APP_HOST", "").strip
+  app_hosts = app_host.split(",").map(&:strip).reject(&:empty?)
+
+  if app_hosts.empty?
+    raise "APP_HOST is required in production (set APP_HOST=* to disable host authorization explicitly)"
+  elsif app_hosts == [ "*" ]
+    config.hosts.clear
+    config.after_initialize do
+      Rails.logger.warn("APP_HOST=* is set: host authorization disabled")
+    end
+  elsif app_hosts.include?("*")
+    raise "APP_HOST=* must be used alone (got: #{app_host.inspect})"
+  else
+    config.hosts = app_hosts
+
+    # Skip DNS rebinding protection for the default health check endpoint.
+    config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  end
 end

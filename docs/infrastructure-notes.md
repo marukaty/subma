@@ -128,6 +128,12 @@ graph TB
 | `subma-web` (Service) | Rails アプリ本体 | min=0, max=3, CPU=1, Mem=512Mi, cpu_idle=true |
 | `subma-web-migrate` (Job) | DB マイグレーション | デプロイ後に execute |
 
+**Host ヘッダ検証（`APP_HOST`）**:
+- Service には Terraform が `APP_HOST`（Cloud Run の URL のホスト部分）を渡し、Rails の `config.hosts` で許可ホストを限定する（`/up` は除外）
+- 本番で `APP_HOST` が未設定・空だと Rails は起動時に例外で停止する（fail-closed）
+- `APP_HOST=*` は検証の明示的な無効化。Job（`subma-web-migrate`）と Dockerfile の `assets:precompile` だけが使う（いずれも HTTP リクエストを受けない）
+- Job の env は Terraform 管理のため、この変更を含むイメージをデプロイする前に `terraform apply` を済ませておく
+
 **コスト最適化のポイント**:
 - `min_instance_count = 0`: アクセスがない時間は完全停止・課金ゼロ
 - `cpu_idle = true`: リクエスト処理外の CPU 課金を止める

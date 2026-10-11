@@ -8,10 +8,13 @@ require "active_record/railtie"
 require "active_storage/engine"
 require "action_controller/railtie"
 require "action_mailer/railtie"
-require "action_mailbox/engine"
-require "action_text/engine"
+# Action Mailbox / Action Text / Action Cable は使っていないため読み込まない。
+# 読み込むと受信メール用・WebSocket 用のルートやミドルウェアが有効になり、
+# 不要な公開エンドポイントが増える。
+# require "action_mailbox/engine"
+# require "action_text/engine"
 require "action_view/railtie"
-require "action_cable/engine"
+# require "action_cable/engine"
 # require "rails/test_unit/railtie"
 
 # Require the gems listed in Gemfile, including any gems
@@ -44,5 +47,11 @@ module Subma
 
     # ActiveJob のバックエンドに Sidekiq を採用（Phase 3 ProcessCsvJob 等）
     config.active_job.queue_adapter = :sidekiq
+
+    # Active Storage はサーバー側で CSV を attach して処理後に purge するだけで、
+    # ブラウザからの直接アップロード（DirectUpload）やファイル配信は使わない。
+    # 既定のルート（/rails/active_storage/direct_uploads、/rails/active_storage/disk/*、
+    # blob / representation 配信）は認証なしで到達できるため描画しない。
+    config.active_storage.draw_routes = false
   end
 end

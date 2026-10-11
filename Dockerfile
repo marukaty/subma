@@ -46,7 +46,9 @@ RUN bundle install && \
 COPY . .
 
 # Precompiling assets for production without requiring secret RAILS_MASTER_KEY
-RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
+# イメージ作成時は Host ヘッダを受けないため、APP_HOST=* で Host 検証の無効化を明示する
+# （本番 production.rb は APP_HOST 未設定だと起動を止める）。ENV ではなくこの RUN 限定で渡す。
+RUN SECRET_KEY_BASE_DUMMY=1 APP_HOST='*' ./bin/rails assets:precompile
 
 
 
