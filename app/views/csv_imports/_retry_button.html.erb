@@ -1,0 +1,5 @@
+<%# 失敗・停止した取り込みの再実行（POST + CSRF トークン付き。ファイルが残っているときだけ表示） %>
+<% if csv_import.retryable? && csv_import.file.attached? %>
+  <%= button_to "再実行", csv_import_retry_path(csv_import), method: :post,
+        class: "mt-3 text-sm font-medium px-4 py-2 rounded-lg bg-white border border-current hover:bg-gray-50" %>
+<% end %>
