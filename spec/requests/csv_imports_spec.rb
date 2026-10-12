@@ -26,11 +26,30 @@ RSpec.describe "CsvImports", type: :request do
         get new_csv_import_path
         expect(response).to have_http_status(:ok)
       end
+
+      it "サイズ上限と対応形式を案内する" do
+        get new_csv_import_path
+        expect(response.body).to include("サイズ上限: 1MB")
+        expect(response.body).to include("拡張子 .csv")
+      end
     end
 
     describe "POST /csv_imports" do
       let(:upload) do
         Rack::Test::UploadedFile.new(csv_path, "text/csv")
+      end
+
+      def upload_of(content, filename: "statement.csv", content_type: "text/csv")
+        Rack::Test::UploadedFile.new(StringIO.new(content.b), content_type, true, original_filename: filename)
+      end
+
+      def expect_rejected(params, message)
+        expect {
+          post csv_imports_path, params: params
+        }.not_to change(CsvImport, :count)
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.body).to include(message)
+        expect(ProcessCsvJob).not_to have_been_enqueued
       end
 
       it "CsvImport を作成して ProcessCsvJob を enqueue する" do
@@ -41,11 +60,116 @@ RSpec.describe "CsvImports", type: :request do
         ci = CsvImport.last
         expect(ProcessCsvJob).to have_been_enqueued.with(ci.id)
         expect(response).to redirect_to(csv_import_path(ci))
+        expect(ci.file).to be_attached
       end
 
-      it "ファイルなしは弾かれる" do
-        post csv_imports_path, params: { csv_import: { format: "rakuten" } }
-        expect(response).to redirect_to(new_csv_import_path)
+      it "Shift_JIS の CSV（Windows の Excel が付ける Content-Type）も受け付ける" do
+        sjis = Rack::Test::UploadedFile.new(
+          Rails.root.join("spec/fixtures/csv/rakuten_sample_sjis.csv"), "application/vnd.ms-excel"
+        )
+        expect {
+          post csv_imports_path, params: { csv_import: { format: "rakuten", file: sjis } }
+        }.to change(CsvImport, :count).by(1)
+        expect(response).to redirect_to(csv_import_path(CsvImport.last))
+      end
+
+      it "ファイルなしは 422 で入力画面を再表示する" do
+        expect_rejected({ csv_import: { format: "rakuten" } }, "CSV ファイルを選択してください")
+      end
+
+      it "csv_import キー自体が無くても 500 にせず 422" do
+        expect_rejected({}, "CSV ファイルを選択してください")
+      end
+
+      it "file に文字列を送っても 422" do
+        expect_rejected({ csv_import: { format: "rakuten", file: "not-a-file" } }, "CSV ファイルを選択してください")
+      end
+
+      it "format 未入力は 422" do
+        expect_rejected({ csv_import: { format: "", file: upload } }, "フォーマットを選択してください")
+      end
+
+      it "format が不正値なら 500 にせず 422" do
+        expect_rejected({ csv_import: { format: "bogus", file: upload } }, "対応していないフォーマットです")
+      end
+
+      it "enum にあってもアダプタ未実装の format は 422" do
+        expect_rejected({ csv_import: { format: "smcc", file: upload } }, "対応していないフォーマットです")
+      end
+
+      it "拡張子が .csv 以外は 422" do
+        file = upload_of(File.binread(csv_path), filename: "statement.xlsx")
+        expect_rejected({ csv_import: { format: "rakuten", file: file } }, "拡張子が .csv のファイルを選択してください")
+      end
+
+      it "許可していない Content-Type は 422" do
+        file = upload_of(File.binread(csv_path), content_type: "application/pdf")
+        expect_rejected({ csv_import: { format: "rakuten", file: file } }, "CSV ファイルとして認識できない形式です")
+      end
+
+      it "空のファイルは 422" do
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of("") } }, "ファイルが空です")
+      end
+
+      it "既定の上限（1MB）を超えるファイルは 422" do
+        big = "日付,内容,金額\n" + ("2026/04/01,NETFLIX.COM,1490\n" * 40_000)
+        expect(big.bytesize).to be > 1_048_576
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of(big) } }, "ファイルサイズは 1MB までです")
+      end
+
+      it "CSV_MAX_UPLOAD_BYTES で上限を変えられる" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("CSV_MAX_UPLOAD_BYTES").and_return("100")
+        expect_rejected({ csv_import: { format: "rakuten", file: upload } }, "ファイルサイズは 100B までです")
+      end
+
+      it "壊れた CSV（閉じていない引用符）は 422" do
+        broken = %("利用日","利用店名・商品名","利用金額"\n"2026/04/01,"NETFLIX.COM",1490\n)
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of(broken) } }, "CSV として読み取れません")
+      end
+
+      it "UTF-8 でも Shift_JIS でも読めない文字列は 422" do
+        invalid = "\x82\xA0\xFF\xFE,abc\n".b
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of(invalid) } }, "文字コードを読み取れません")
+      end
+
+      it "拡張子と Content-Type が CSV でも中身が画像（バイナリ）なら 422" do
+        png = "\x89PNG\r\n\x1A\n".b + "\x00\x00\x00\rIHDR".b + ("\x00".b * 64)
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of(png) } }, "ファイルの中身が CSV ではありません")
+      end
+
+      it "拡張子と Content-Type が CSV でも中身が ZIP（xlsx 等）なら 422" do
+        zip = "PK\x03\x04".b + "\x14\x00\x00\x00\x08\x00".b + "[Content_Types].xml".b
+        expect_rejected({ csv_import: { format: "rakuten", file: upload_of(zip) } }, "ファイルの中身が CSV ではありません")
+      end
+
+      it "許可していないキー（user_id・status・filename 等）は無視する" do
+        other = User.create!(firebase_uid: "uid_other_params", email: "op@example.com")
+        expect {
+          post csv_imports_path, params: {
+            csv_import: {
+              format: "rakuten", file: upload,
+              user_id: other.id, status: "completed", filename: "../../etc/passwd.csv"
+            }
+          }
+        }.to change(CsvImport, :count).by(1)
+
+        ci = CsvImport.last
+        expect(ci.user).to eq(user)
+        expect(ci.status).to eq("uploading")
+        expect(ci.filename).to eq("rakuten_sample_utf8.csv")
+        expect(response).to redirect_to(csv_import_path(ci))
+      end
+
+      it "長いファイル名は拡張子を残して 100 文字に切って保存する" do
+        file = upload_of(File.binread(csv_path), filename: "#{'a' * 300}.csv")
+        post csv_imports_path, params: { csv_import: { format: "rakuten", file: file } }
+
+        ci = CsvImport.last
+        expect(response).to redirect_to(csv_import_path(ci))
+        expect(ci.filename.length).to eq(100)
+        expect(ci.filename).to end_with(".csv")
+        expect(ci.file.filename.to_s).to eq(ci.filename)
       end
     end
 
