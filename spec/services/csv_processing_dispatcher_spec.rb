@@ -18,6 +18,46 @@ RSpec.describe CsvProcessingDispatcher do
         expect(Google::Cloud::Tasks).not_to receive(:cloud_tasks)
         described_class.dispatch(csv_import)
       end
+
+      it ":enqueued を返す" do
+        expect(described_class.dispatch(csv_import)).to eq(:enqueued)
+      end
+    end
+
+    context "同じユーザーに処理中の import がある（ADR-0007: 1 ユーザー同時 1 件）" do
+      %i[processing rule_matching ai_analyzing].each do |status|
+        it "#{status} があれば登録せず :deferred を返す（uploading のまま）" do
+          user.csv_imports.create!(filename: "running.csv", format: :rakuten, status: status)
+
+          expect {
+            expect(described_class.dispatch(csv_import)).to eq(:deferred)
+          }.not_to have_enqueued_job(ProcessCsvJob)
+          expect(csv_import.reload.status).to eq("uploading")
+        end
+      end
+
+      it "処理中のまま 30 分以上止まっている import は数えない" do
+        running = user.csv_imports.create!(filename: "running.csv", format: :rakuten, status: :processing)
+        running.update_columns(updated_at: 31.minutes.ago)
+
+        expect {
+          described_class.dispatch(csv_import)
+        }.to have_enqueued_job(ProcessCsvJob).with(csv_import.id)
+      end
+
+      it "完了・失敗の import は数えない" do
+        user.csv_imports.create!(filename: "done.csv", format: :rakuten, status: :completed)
+        user.csv_imports.create!(filename: "ng.csv", format: :rakuten, status: :failed)
+
+        expect(described_class.dispatch(csv_import)).to eq(:enqueued)
+      end
+
+      it "別ユーザーの処理中は関係ない" do
+        other = User.create!(firebase_uid: "uid_dispatcher_other", email: "dispatcher-other@example.com")
+        other.csv_imports.create!(filename: "running.csv", format: :rakuten, status: :processing)
+
+        expect(described_class.dispatch(csv_import)).to eq(:enqueued)
+      end
     end
 
     context "production 経路（use_cloud_tasks? を stub）" do
@@ -56,6 +96,8 @@ RSpec.describe CsvProcessingDispatcher do
           expect(body["csv_import_id"]).to eq(csv_import.id)
           expect(http_request[:oidc_token][:audience]).to eq("https://example.com/internal/jobs/process_csv")
           expect(http_request[:oidc_token][:service_account_email]).to eq("sa@test-project.iam.gserviceaccount.com")
+          # Cloud Run の timeout（900 秒）と同じ待ち時間を指定する（ADR-0007）
+          expect(args[:task][:dispatch_deadline]).to eq(seconds: 900)
         end
 
         described_class.dispatch(csv_import)

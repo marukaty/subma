@@ -125,7 +125,7 @@ graph TB
 
 | リソース | 用途 | 設定 |
 |---|---|---|
-| `subma-web` (Service) | Rails アプリ本体 | min=0, max=3, CPU=1, Mem=512Mi, cpu_idle=true |
+| `subma-web` (Service) | Rails アプリ本体 | min=0, max=3, CPU=1, Mem=512Mi, cpu_idle=true, timeout=900s, concurrency=3 |
 | `subma-web-migrate` (Job) | DB マイグレーション | デプロイ後に execute |
 
 **Host ヘッダ検証（`APP_HOST`）**:
@@ -133,6 +133,10 @@ graph TB
 - 本番で `APP_HOST` が未設定・空だと Rails は起動時に例外で停止する（fail-closed）
 - `APP_HOST=*` は検証の明示的な無効化。Job（`subma-web-migrate`）と Dockerfile の `assets:precompile` だけが使う（いずれも HTTP リクエストを受けない）
 - Job の env は Terraform 管理のため、この変更を含むイメージをデプロイする前に `terraform apply` を済ませておく
+
+**CSV 取り込みのための設定（ADR-0007）**:
+- `timeout = "900s"`: CSV 取り込みは Cloud Tasks → `/internal/jobs/process_csv` の 1 リクエストの中で AI 判定まで同期実行する。60 秒だと途中で 504 になり、Cloud Tasks が再送していた。Cloud Tasks のタスク側 `dispatch_deadline`（900 秒）と同じ値にそろえている
+- `max_instance_request_concurrency = 3`: Puma のスレッド数（3）と同じ。既定の 80 だと、長い取り込みでスレッドが埋まっても新しいリクエストが同じインスタンスで待たされ、インスタンスが増えない
 
 **コスト最適化のポイント**:
 - `min_instance_count = 0`: アクセスがない時間は完全停止・課金ゼロ
@@ -206,7 +210,7 @@ GCP API 呼び出し
 ### 3.7 その他
 
 - **Firestore**: Native モード、`(default)` database、`delete_protection_state=ENABLED`
-- **Cloud Tasks**: `process-csv` queue、max-concurrent=5、retry=3
+- **Cloud Tasks**: `process-csv` queue、max-concurrent=2、retry=3（指数バックオフ 10〜300 秒、最初の試行から 30 分で打ち切り）、タスクの dispatch_deadline=900 秒
 - **Cloud Scheduler**: 引落リマインド用 cron（v2 で本格利用）
 - **Artifact Registry**: `subma` Docker repo、asia-northeast1
 
@@ -303,6 +307,7 @@ sequenceDiagram
 
 - 発行元の確認: Google の ID トークンは任意の GCP プロジェクトの SA が任意の aud で発行できるため、aud / iss に加えて `email` が環境変数 `CLOUD_TASKS_SA_EMAIL` と一致し `email_verified == true` であることを必須にしている。不一致は 401。
 - `CLOUD_TASKS_SA_EMAIL` は Terraform が `google_service_account.cloud_tasks.email` から Cloud Run に注入する（tfvars への手書き不要。enqueue 時の発行 SA と同じ値）。未設定・空ならジョブを実行せず 500 を返す（fail-closed）。
+- 二重実行の防止（ADR-0007）: Cloud Tasks は同じタスクを複数回届けることがある（at-least-once）。`ProcessCsvJob` は最初にユーザーと import の行をロックし、`uploading` のときだけ `processing` にして処理する。それ以外（処理中・完了・失敗）は何もせず 200 を返し、再送を止める。失敗も 200 で返し、`failed` にして手動の再処理を待つ。
 
 ---
 
@@ -438,6 +443,7 @@ terraform destroy -auto-approve
 | 500 エラー | Cloud Logging（lograge JSON 検索）|
 | DB 接続エラー | Cloud SQL ダッシュボード / `gcloud sql instances describe` |
 | デプロイ失敗 | GitHub Actions の Job log |
+| CSV 取り込みが「失敗」のまま／処理中のまま止まった | Cloud Logging で `[ProcessCsvJob]` を検索。原因を直したら 8.6 の手順で再処理 |
 
 ### 8.5 ログイン許可リストの運用（ADR-0006）
 
@@ -500,6 +506,19 @@ gcloud secrets versions disable <VERSION> --secret=allowed-login-emails
    - アプリケーションの制限: HTTP リファラー（本番ドメインの `https://<本番ドメイン>/*` と、Firebase の `https://<project>.firebaseapp.com/*`）
    - API の制限: Identity Toolkit API と Token Service API（Secure Token）だけに絞る
 4. 設定後、許可リストに入っているアカウントでログインでき、入っていないアカウントでは「このサービスは招待制です」が表示されることを本番で確認する
+
+### 8.6 CSV 取り込みの再処理（ADR-0007）
+
+`failed` の import と、処理中のまま 30 分以上更新がない import は再処理できる。アップロードファイルは `completed` になったときだけ削除するので、失敗した import はファイルが残っている。ただし、保存先バケットのライフサイクル（1 日）を過ぎるとファイルが消えるため、その場合は再アップロードしてもらう。
+
+- 利用者本人: 取り込み詳細画面の「再実行」ボタン（`POST /csv_imports/:id/retry`）
+- 運用者: Cloud Run Job などアプリと同じ環境から rake タスクを実行する
+
+```bash
+bin/rails 'csv_imports:retry[<csv_import_id>]'
+```
+
+どちらも status を `uploading` に戻してから `CsvProcessingDispatcher` で登録する。同じユーザーの別の import が処理中なら登録を見送り、その処理が終わったときに古い順に自動で登録される。
 
 ---
 

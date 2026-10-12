@@ -16,15 +16,40 @@
 #   CLOUD_TASKS_TARGET_URL - Cloud Run 上の受信エンドポイント URL
 #   CLOUD_TASKS_SA_EMAIL   - Cloud Tasks が OIDC トークンを発行する Service Account のメール
 #
+# 1 ユーザー同時 1 件（ADR-0007）:
+#   同じユーザーに処理中の import があるときは登録を見送り、uploading のまま待たせる。
+#   処理中の import が終わると ProcessCsvJob が古い順に次の 1 件を登録する。
+#   戻り値は :enqueued（登録した）/ :deferred（見送った）。
+#
 # [ai-assisted]
 class CsvProcessingDispatcher
+  # Cloud Tasks がタスク 1 件の応答を待つ時間。Cloud Run のリクエストタイムアウト（900 秒）に合わせる。
+  # 指定しないと HTTP タスクの既定は 10 分で、処理中に Cloud Tasks 側だけが諦めて再送してしまう。
+  DISPATCH_DEADLINE_SECONDS = 900
+
   class << self
     def dispatch(csv_import)
+      if user_busy?(csv_import)
+        Rails.logger.info(
+          "CsvProcessingDispatcher: deferred csv_import_id=#{csv_import.id} (another import of the same user is processing)"
+        )
+        return :deferred
+      end
+
       if use_cloud_tasks?
         enqueue_cloud_task(csv_import.id)
       else
         enqueue_sidekiq(csv_import.id)
       end
+      :enqueued
+    end
+
+    # 同じユーザーの別の import が処理中か（止まったまま放置されたものは数えない）
+    def user_busy?(csv_import)
+      CsvImport.actively_processing
+               .where(user_id: csv_import.user_id)
+               .where.not(id: csv_import.id)
+               .exists?
     end
 
     # production 環境では Cloud Tasks を、それ以外（dev / test）では Sidekiq を使う。
@@ -57,7 +82,8 @@ class CsvProcessingDispatcher
             service_account_email: ENV.fetch("CLOUD_TASKS_SA_EMAIL"),
             audience: target_url
           }
-        }
+        },
+        dispatch_deadline: { seconds: DISPATCH_DEADLINE_SECONDS }
       }
       client.create_task(parent: parent, task: task)
       Rails.logger.info("CsvProcessingDispatcher: enqueued cloud task csv_import_id=#{csv_import_id}")

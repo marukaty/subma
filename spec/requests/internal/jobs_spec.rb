@@ -24,6 +24,34 @@ RSpec.describe "Internal::Jobs", type: :request do
         expect(body["csv_import_id"]).to eq(csv_import.id)
       end
 
+      context "ジョブを実際に動かす（ADR-0007: 二重実行の防止）" do
+        before { allow_any_instance_of(ProcessCsvJob).to receive(:perform).and_call_original }
+
+        %i[processing completed failed].each do |status|
+          it "#{status} の import への再送は何もせず 200（Cloud Tasks に再送させない）" do
+            csv_import.update!(status: status)
+            expect(Csv::Parser).not_to receive(:new)
+
+            post url, params: { csv_import_id: csv_import.id }
+
+            expect(response).to have_http_status(:ok)
+            expect(JSON.parse(response.body)["result"]).to eq("skipped")
+            expect(csv_import.reload.status).to eq(status.to_s)
+          end
+        end
+
+        it "処理が失敗しても 200 を返し、import は failed になる" do
+          csv_import.file.attach(io: StringIO.new("broken"), filename: "x.csv", content_type: "text/csv")
+          allow(Csv::Parser).to receive(:new).and_raise(ArgumentError, "boom")
+
+          post url, params: { csv_import_id: csv_import.id }
+
+          expect(response).to have_http_status(:ok)
+          expect(JSON.parse(response.body)["result"]).to eq("failed")
+          expect(csv_import.reload.status).to eq("failed")
+        end
+      end
+
       it "ProcessCsvJob#perform を同期実行する" do
         expect_any_instance_of(ProcessCsvJob).to receive(:perform).with(csv_import.id)
         post url, params: { csv_import_id: csv_import.id }
