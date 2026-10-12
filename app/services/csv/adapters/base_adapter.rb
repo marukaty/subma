@@ -5,14 +5,19 @@ module Csv
     # CSV アダプタの共通基底クラス。
     # サブクラスは #parse_row(row) を実装し、{ date:, description:, amount: } を返す。
     # 不正な行は nil を返してスキップ可能。
+    # 利用店名は transactions.description の列長（MAX_DESCRIPTION_LENGTH 文字）に切る。
+    # 長い店名の行が 1 行あるだけで、取り込み全体が保存時に失敗しないようにするため。
     class BaseAdapter
       class ParseError < StandardError; end
+
+      MAX_DESCRIPTION_LENGTH = 255
 
       # @param file_path [String, Pathname]
       # @return [Array<Hash>] [{ date: Date, description: String, amount: BigDecimal }, ...]
       def parse(file_path)
         rows = read_rows(file_path)
         rows.filter_map { |row| parse_row(row) }
+            .map { |row| row.merge(description: row[:description].to_s.first(MAX_DESCRIPTION_LENGTH)) }
       end
 
       protected
@@ -44,7 +49,9 @@ module Csv
         return nil if str.blank?
         # "2026/04/01" "2026-04-01" "2026/4/1" などに対応
         Date.parse(str.to_s)
-      rescue Date::Error
+      rescue ArgumentError
+        # 日付として読めない値は Date::Error（ArgumentError のサブクラス）、
+        # 長すぎる値（128 文字超）は ArgumentError になる。どちらもその行をスキップする
         nil
       end
     end

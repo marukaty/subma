@@ -136,6 +136,33 @@ RSpec.describe Csv::Parser do
       end
     end
 
+    it "利用店名は 255 文字（transactions.description の列長）に切る" do
+      Tempfile.create([ "long_description", ".csv" ]) do |f|
+        f.write([
+          %("利用日","利用店名・商品名","利用金額"),
+          %("2026/04/01","#{'あ' * 300}","1490")
+        ].join("\n"))
+        f.flush
+
+        rows = described_class.new(file_path: f.path, format: "rakuten").parse
+        expect(rows.first[:description]).to eq("あ" * 255)
+      end
+    end
+
+    it "日付欄が長すぎる行（Date.parse が ArgumentError を出す）は例外にせずスキップする" do
+      Tempfile.create([ "long_date", ".csv" ]) do |f|
+        f.write([
+          %("利用日","利用店名・商品名","利用金額"),
+          %("#{'2' * 200}","LONG DATE","100"),
+          %("2026/04/01","NETFLIX","1490")
+        ].join("\n"))
+        f.flush
+
+        rows = described_class.new(file_path: f.path, format: "rakuten").parse
+        expect(rows.map { |r| r[:description] }).to eq([ "NETFLIX" ])
+      end
+    end
+
     it "handles comma in amount (e.g. \"1,234\")" do
       Tempfile.create([ "comma", ".csv" ]) do |f|
         f.write([
