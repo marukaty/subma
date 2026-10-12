@@ -2,7 +2,7 @@
 
 - **ステータス**: 採択
 - **日付**: 2026-10-09
-- **決定者**: なみ屋
+- **決定者**: Marin Miyazaki
 - **関連 ADR**: ADR-0001（Firebase Auth Strategy）
 
 ## 背景（Context）
