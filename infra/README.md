@@ -102,12 +102,11 @@ project_id            = "subma-prod"
 github_repository     = "OWNER/subma"
 firebase_project_id   = "subma-xxxxx"
 firebase_auth_domain  = "subma-xxxxx.firebaseapp.com"
-firebase_web_api_key  = "AIzaSyXXX"
-rails_master_key      = "XXXXXXXXXXXX"
-anthropic_api_key     = "sk-ant-xxx"
 EOF
 
 # tfvars はリポジトリにコミットしない（.gitignore 済み）
+# API キー・master key などの秘密値は tfvars に書かない。
+# Secret の器だけ Terraform で作り、値は gcloud で投入する（次の手順 5）
 ```
 
 ### 5. terraform init / plan / apply
@@ -117,6 +116,18 @@ terraform init \
   -backend-config="bucket=subma-tfstate" \
   -backend-config="prefix=prod"
 
+# 5-1. Secret の器と accessor 権限だけ先に作る
+terraform apply \
+  -target=google_secret_manager_secret.subma \
+  -target=google_secret_manager_secret_iam_member.cloud_run_accessor \
+  -target=google_secret_manager_secret_version.cloud_sql_app_password \
+  -target=google_secret_manager_secret.allowed_login_emails \
+  -target=google_secret_manager_secret_iam_member.allowed_login_emails_accessor
+
+# 5-2. 秘密値を投入（手順: docs/infrastructure-notes.md 8.9。許可メールは 8.5）
+#      rails-master-key / anthropic-api-key / firebase-web-api-key / allowed-login-emails
+
+# 5-3. 残りを作る
 terraform plan -out=plan.out
 terraform apply plan.out
 ```

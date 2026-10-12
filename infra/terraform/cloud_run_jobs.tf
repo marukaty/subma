@@ -92,7 +92,7 @@ resource "google_cloud_run_v2_job" "migrate" {
 
   depends_on = [
     google_project_service.required_apis,
-    google_secret_manager_secret_version.subma,
+    google_secret_manager_secret_version.cloud_sql_app_password,
     google_secret_manager_secret_iam_member.cloud_run_accessor,
   ]
 
