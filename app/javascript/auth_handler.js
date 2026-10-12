@@ -2,6 +2,7 @@
 // ログイン成功時: /auth/sign_in に id_token を送信、200 で /dashboard へ遷移
 // エラー時: ログイン画面にエラー表示
 // 403 not_allowed（許可リスト外 / ADR-0006）: Firebase 側もサインアウトし、招待制である旨を表示
+// 退会直後: ブラウザ側の Firebase のログイン状態を消す（Firebase のアカウントは削除しない）
 
 import { initializeApp } from "firebase/app"
 import {
@@ -76,6 +77,11 @@ async function signOutFromBoth() {
 
 document.addEventListener("DOMContentLoaded", () => {
   const errorBox = document.getElementById("auth-error")
+
+  // 退会直後のログイン画面: Rails のセッションは破棄済み。ブラウザ側の Firebase のログイン状態も残さない
+  if (document.getElementById("firebase-sign-out-on-load")) {
+    firebaseSignOut(auth).catch(() => {})
+  }
 
   document.getElementById("sign-in-google")?.addEventListener("click", async () => {
     if (errorBox) errorBox.textContent = ""

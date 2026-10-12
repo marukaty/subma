@@ -26,5 +26,10 @@
     </button>
 
     <p id="auth-error" class="text-sm text-red-600 mt-4 text-center"></p>
+
+    <%# 退会直後: ブラウザに残っている Firebase のログイン状態を消す（Firebase のアカウント自体は消さない） %>
+    <% if flash[:account_deleted] %>
+      <div id="firebase-sign-out-on-load" hidden></div>
+    <% end %>
   </div>
 </div>

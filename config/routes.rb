@@ -33,6 +33,8 @@ Rails.application.routes.draw do
 
   # 設定
   resource :settings, only: [ :show, :update ]
+  # 退会（アカウントとすべてのデータを削除）
+  delete "settings/account" => "settings#destroy_account", as: :settings_account
 
   # Phase 4: Cloud Tasks からの HTTP push 受信エンドポイント（OIDC 検証必須）
   namespace :internal do

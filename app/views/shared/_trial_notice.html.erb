@@ -1,0 +1,12 @@
+<%# 試用者向けの案内（ダッシュボードと CSV 取り込み画面に表示） %>
+<div id="trial-notice" class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
+  <p class="font-medium mb-1">はじめにお読みください</p>
+  <ul class="list-disc list-inside space-y-0.5 text-xs">
+    <li>このサービスは評価用です。実際のカード明細ではなく、サンプル CSV のご利用をおすすめします。</li>
+    <li>登録したデータは、<%= link_to "設定画面", settings_path(anchor: "account-deletion"), class: "underline hover:text-blue-700" %>からいつでもすべて削除できます。</li>
+  </ul>
+  <p class="mt-2 text-xs">
+    <%= link_to "サンプル CSV（楽天カード形式・架空の明細）をダウンロード", "/samples/sample_rakuten.csv",
+          download: "sample_rakuten.csv", class: "font-medium text-blue-700 underline hover:text-blue-800" %>
+  </p>
+</div>

@@ -52,4 +52,32 @@
       </div>
     </dl>
   </div>
+
+  <%# 退会（アカウントとすべてのデータを削除） %>
+  <div id="account-deletion" class="bg-white rounded-2xl shadow-sm p-6 border border-red-200">
+    <h2 class="text-sm font-semibold text-red-700 mb-2">アカウントとすべてのデータを削除</h2>
+    <div class="text-xs text-gray-600 space-y-1 mb-4">
+      <p>このサービスに登録したデータをすべて削除し、退会します。削除したデータは元に戻せません。</p>
+      <ul class="list-disc list-inside space-y-0.5">
+        <li>削除するもの: 登録したサブスク、CSV の取り込み履歴と明細、アップロードした CSV ファイル、操作履歴</li>
+        <li>Google アカウントは削除しません（Google アカウント自体はあなたのものなので、このサービスからは消しません）</li>
+        <li>もう一度ログインすると、データが空の新しいアカウントとして使い始められます（招待されたアカウントの場合）</li>
+      </ul>
+    </div>
+    <%= form_with(url: settings_account_path, method: :delete, local: true,
+                  data: { turbo_confirm: "アカウントとすべてのデータを削除します。元に戻せません。よろしいですか？" },
+                  html: { class: "space-y-3" }) do |f| %>
+      <div>
+        <%= f.label :confirmation_email, class: "block text-xs font-medium text-gray-700 mb-1" do %>
+          確認のため、ログイン中のメールアドレス（<span class="font-mono"><%= @user.email %></span>）を入力してください
+        <% end %>
+        <%= f.email_field :confirmation_email, required: true, autocomplete: "off",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" %>
+      </div>
+      <div class="flex justify-end">
+        <%= f.submit "アカウントとすべてのデータを削除",
+              class: "px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 cursor-pointer" %>
+      </div>
+    <% end %>
+  </div>
 </div>

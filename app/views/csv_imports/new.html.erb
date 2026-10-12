@@ -3,6 +3,8 @@
 <div class="max-w-2xl mx-auto">
   <h1 class="text-2xl font-bold text-gray-800 mb-6">CSV を取り込む</h1>
 
+  <div class="mb-6"><%= render "shared/trial_notice" %></div>
+
   <div class="bg-white rounded-2xl shadow-sm p-6">
     <%= form_with(model: @csv_import, url: csv_imports_path, local: true, multipart: true,
                   class: "space-y-4") do |f| %>
