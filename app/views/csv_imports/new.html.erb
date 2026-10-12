@@ -59,7 +59,7 @@
 
         <ul id="csv-upload-requirements" class="text-xs text-gray-500 mt-2 space-y-0.5">
           <li>対応形式: 拡張子 .csv（カンマ区切り）、文字コードは UTF-8 または Shift_JIS</li>
-          <li>サイズ上限: <%= CsvUploadForm.max_size_label %></li>
+          <li>サイズ上限: <%= CsvUploadForm.max_size_label %>、取引の行数は <%= CsvUploadForm.max_rows.to_fs(:delimited) %> 行まで</li>
           <li>ファイルは AI 判定後に自動で削除されます（NFR-S-09）</li>
         </ul>
       </div>

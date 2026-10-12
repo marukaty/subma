@@ -88,7 +88,7 @@ RSpec.describe CsvUploadForm do
     end
 
     it "先頭だけを読むので、上限内でも大きいファイルの末尾の途中切れで誤判定しない" do
-      body = "日付,内容,金額\n" + ("2026/04/01,ネットフリックス,1490\n" * 2_000)
+      body = "日付,内容,金額\n" + ("2026/04/01,ネットフリックス,1490\n" * 1_000)
       expect(body.bytesize).to be > described_class::HEAD_BYTES
       expect(form_with(upload_of(body))).to be_valid
     end
@@ -97,6 +97,66 @@ RSpec.describe CsvUploadForm do
       file = Rack::Test::UploadedFile.new(csv_path, "text/csv")
       form_with(file).valid?
       expect(file.read).to eq(File.binread(csv_path))
+    end
+  end
+
+  describe ".max_rows" do
+    it "未設定なら 1,000 行" do
+      expect(described_class.max_rows).to eq(1_000)
+    end
+
+    it "環境変数 CSV_MAX_ROWS の値を使う" do
+      with_limit_env("CSV_MAX_ROWS" => "50")
+      expect(described_class.max_rows).to eq(50)
+    end
+
+    it "数値でない・0 以下なら既定値に戻す" do
+      %w[abc 0 -1 1.5].each do |value|
+        with_limit_env("CSV_MAX_ROWS" => value)
+        expect(described_class.max_rows).to eq(1_000), "value=#{value}"
+      end
+    end
+  end
+
+  describe "行数の上限（M-7）" do
+    def csv_with_rows(count, blank_lines: 0)
+      "利用日,利用店名・商品名,利用金額\n" +
+        Array.new(count) { |i| "2026/04/01,SHOP #{i},100\n" }.join +
+        ("\n" * blank_lines)
+    end
+
+    it "ヘッダを除いてちょうど上限（1,000 行）なら有効" do
+      expect(form_with(upload_of(csv_with_rows(1_000)))).to be_valid
+    end
+
+    it "上限を 1 行でも超えると too_many_rows" do
+      form = form_with(upload_of(csv_with_rows(1_001)))
+      expect(form).not_to be_valid
+      expect(form.errors.details[:file]).to include(error: :too_many_rows, max_rows: "1,000")
+    end
+
+    it "先頭 16KB より後ろの行も数える" do
+      body = csv_with_rows(1_001)
+      expect(body.bytesize).to be > described_class::HEAD_BYTES
+      expect(form_with(upload_of(body))).not_to be_valid
+    end
+
+    it "空行は数えない" do
+      expect(form_with(upload_of(csv_with_rows(1_000, blank_lines: 5)))).to be_valid
+    end
+
+    it "Shift_JIS の CSV も数える" do
+      with_limit_env("CSV_MAX_ROWS" => "3")
+      sjis = "利用日,利用店名・商品名,利用金額\n" + ("2026/04/01,コンビニ,100\n" * 4)
+      form = form_with(upload_of(sjis.encode(Encoding::Windows_31J)))
+      expect(form).not_to be_valid
+      expect(form.errors.details[:file]).to include(error: :too_many_rows, max_rows: "3")
+    end
+
+    it "CSV_MAX_ROWS で上限を変えられる" do
+      with_limit_env("CSV_MAX_ROWS" => "2")
+      expect(form_with(upload_of(csv_with_rows(2)))).to be_valid
+      expect(form_with(upload_of(csv_with_rows(3)))).not_to be_valid
     end
   end
 

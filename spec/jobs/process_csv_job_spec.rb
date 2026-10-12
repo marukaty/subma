@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe ProcessCsvJob, type: :job do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:user) { User.create!(firebase_uid: "uid_job", email: "job@example.com") }
   let(:csv_path) { Rails.root.join("spec/fixtures/csv/rakuten_sample_utf8.csv") }
   let(:csv_import) do
@@ -155,7 +157,7 @@ RSpec.describe ProcessCsvJob, type: :job do
 
         described_class.new.perform(second.id)
 
-        expect(ai).to have_received(:classify).with([])
+        expect(ai).to have_received(:classify).with([], limiter: an_instance_of(AiUsageLimiter))
       end
 
       context "同じ CSV 内に同日・同店・同額の行が 2 つある" do
@@ -355,6 +357,147 @@ RSpec.describe ProcessCsvJob, type: :job do
         expect(described_class.new.perform(csv_import.id)).to eq(:failed)
         expect(csv_import.transactions.count).to eq(0)
         expect(csv_import.reload.status).to eq("failed")
+      end
+    end
+
+    describe "AI 利用量の上限（M-7）" do
+      let(:subscription_names) { [] }
+      let(:fake_client) { FakeAnthropicClient.new(subscriptions: subscription_names) }
+      let(:csv_files) { [] }
+
+      before do
+        allow(Classifiers::AiClassifier).to receive(:new).and_return(Classifiers::AiClassifier.new(client: fake_client))
+      end
+
+      after { csv_files.each { |path| FileUtils.rm_f(path) } }
+
+      # Tier 1/2 で判定されない（AI に回る）店名の行を作る。descriptions は行ごとの店名
+      def import_for(descriptions, owner: user, amount: 100)
+        path = Rails.root.join("tmp/ai_limit_spec_#{SecureRandom.hex(4)}.csv")
+        lines = descriptions.each_with_index.map do |description, i|
+          %("2026/04/#{format('%02d', (i % 28) + 1)}","#{description}","本人","1回払い","#{amount}","0","#{amount}")
+        end
+        File.write(path, ([ %("利用日","利用店名・商品名","利用者","支払方法","利用金額","支払手数料","支払総額") ] + lines).join("\n") + "\n")
+        csv_files << path
+        ci = CsvImport.create!(user: owner, filename: "limit.csv", format: :rakuten, status: :uploading)
+        ci.file.attach(io: File.open(path), filename: "limit.csv", content_type: "text/csv")
+        ci
+      end
+
+      def shops(count, prefix: "SHOP")
+        Array.new(count) { |i| "#{prefix} #{i}" }
+      end
+
+      it "上限内なら全部 AI に送り、ai_skipped_count は 0" do
+        ci = import_for(shops(5))
+        expect(described_class.new.perform(ci.id)).to eq(:completed)
+        expect(fake_client.sent_rows.size).to eq(5)
+        expect(ci.reload.ai_skipped_count).to eq(0)
+        expect(ci.transactions.classification_non_subscription.count).to eq(5)
+      end
+
+      context "同じ店名（表記ゆれを含む）・同じ金額の行がある" do
+        let(:subscription_names) { [ "SAMPLE VIDEO" ] }
+
+        it "1 回だけ送り、結果を全行に当てる。日次カウンタも送った行数だけ増える" do
+          ci = import_for([ "SAMPLE VIDEO", "sample video", "ＳＡＭＰＬＥ　ＶＩＤＥＯ", "OTHER SHOP" ])
+
+          described_class.new.perform(ci.id)
+
+          expect(fake_client.requests.size).to eq(1)
+          expect(fake_client.sent_rows.map { |row| row["description"] }).to eq([ "SAMPLE VIDEO", "OTHER SHOP" ])
+          expect(ci.transactions.classification_subscription.count).to eq(3)
+          expect(ci.transactions.classification_subscription.pluck(:classifier).uniq).to eq([ "ai" ])
+          expect(AiUsageCounter.find_by(user: user).rows_sent).to eq(2)
+        end
+      end
+
+      it "取り込み 1 回の上限を超えた分は unknown で保存し、ai_skipped_count に記録して completed" do
+        with_limit_env("AI_MAX_ROWS_PER_IMPORT" => 3)
+        ci = import_for(shops(5))
+
+        expect(described_class.new.perform(ci.id)).to eq(:completed)
+
+        ci.reload
+        expect(fake_client.sent_rows.map { |row| row["description"] }).to eq(shops(3))
+        expect(ci.status).to eq("completed")
+        expect(ci.ai_skipped_count).to eq(2)
+        expect(ci.transactions.where(description: [ "SHOP 3", "SHOP 4" ]).pluck(:classification).uniq).to eq([ "unknown" ])
+        expect(ci.transactions.count).to eq(5)
+      end
+
+      it "ai_skipped_count はまとめる前の元の行数で数える" do
+        with_limit_env("AI_MAX_ROWS_PER_IMPORT" => 1)
+        ci = import_for([ "SHOP A", "SHOP B", "SHOP B", "SHOP B" ])
+
+        described_class.new.perform(ci.id)
+
+        expect(fake_client.sent_rows.size).to eq(1)
+        expect(ci.reload.ai_skipped_count).to eq(3)
+      end
+
+      it "1 ユーザー 1 日の上限を超えた分は unknown で保存し、他のユーザーは影響を受けない" do
+        with_limit_env("AI_MAX_ROWS_PER_USER_PER_DAY" => 4)
+        first = import_for(shops(3, prefix: "FIRST"))
+        described_class.new.perform(first.id)
+        second = import_for(shops(3, prefix: "SECOND"))
+
+        expect(described_class.new.perform(second.id)).to eq(:completed)
+        expect(second.reload.ai_skipped_count).to eq(2)
+        expect(second.status).to eq("completed")
+        expect(second.transactions.classification_unknown.count).to eq(2)
+
+        other_user = User.create!(firebase_uid: "uid_job_limit_other", email: "limit-other@example.com")
+        others = import_for(shops(3, prefix: "OTHER"), owner: other_user)
+        described_class.new.perform(others.id)
+        expect(others.reload.ai_skipped_count).to eq(0)
+      end
+
+      it "全体 1 日の上限を超えた分は、別のユーザーでも unknown で保存する" do
+        with_limit_env("AI_MAX_ROWS_PER_DAY" => 4)
+        described_class.new.perform(import_for(shops(3)).id)
+
+        other_user = User.create!(firebase_uid: "uid_job_limit_global", email: "limit-global@example.com")
+        others = import_for(shops(3, prefix: "OTHER"), owner: other_user)
+        expect(described_class.new.perform(others.id)).to eq(:completed)
+
+        expect(others.reload.ai_skipped_count).to eq(2)
+        expect(fake_client.sent_rows.size).to eq(4)
+        expect(AiUsageCounter.global.find_by(usage_date: Time.zone.today).rows_sent).to eq(4)
+      end
+
+      it "上限に達していたら AI を呼ばない" do
+        with_limit_env("AI_MAX_ROWS_PER_DAY" => 0)
+        ci = import_for(shops(2))
+
+        expect(described_class.new.perform(ci.id)).to eq(:completed)
+        expect(fake_client.requests).to be_empty
+        expect(ci.reload.ai_skipped_count).to eq(2)
+      end
+
+      it "日付が変わると日次の上限はリセットされる" do
+        with_limit_env("AI_MAX_ROWS_PER_USER_PER_DAY" => 3)
+        travel_to Time.zone.local(2026, 10, 12, 23, 50) do
+          described_class.new.perform(import_for(shops(3)).id)
+          late = import_for(shops(1, prefix: "LATE"))
+          described_class.new.perform(late.id)
+          expect(late.reload.ai_skipped_count).to eq(1)
+        end
+
+        travel_to Time.zone.local(2026, 10, 13, 0, 5) do
+          next_day = import_for(shops(3, prefix: "NEXT"))
+          described_class.new.perform(next_day.id)
+          expect(next_day.reload.ai_skipped_count).to eq(0)
+        end
+      end
+
+      it "CSV_MAX_ROWS を超えた CSV は AI に送らず failed にする（アップロード後に上限を下げた場合）" do
+        ci = import_for(shops(3))
+        with_limit_env("CSV_MAX_ROWS" => 2)
+
+        expect(described_class.new.perform(ci.id)).to eq(:failed)
+        expect(ci.reload.error_summary).to eq("ProcessCsvJob::TooManyRowsError")
+        expect(fake_client.requests).to be_empty
       end
     end
   end

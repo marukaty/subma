@@ -123,6 +123,30 @@ RSpec.describe "CsvImports", type: :request do
         expect_rejected({ csv_import: { format: "rakuten", file: upload } }, "ファイルサイズは 100B までです")
       end
 
+      describe "行数の上限（M-7）" do
+        def csv_with_rows(count)
+          %("利用日","利用店名・商品名","利用金額"\n) +
+            Array.new(count) { |i| %("2026/04/01","SHOP #{i}","100"\n) }.join
+        end
+
+        it "取引が上限（1,000 行）を超えると 422 でメッセージを出す" do
+          expect_rejected({ csv_import: { format: "rakuten", file: upload_of(csv_with_rows(1_001)) } },
+                          "取引の行数は 1,000 行までです")
+        end
+
+        it "ちょうど上限なら受け付ける" do
+          expect {
+            post csv_imports_path, params: { csv_import: { format: "rakuten", file: upload_of(csv_with_rows(1_000)) } }
+          }.to change(CsvImport, :count).by(1)
+          expect(response).to redirect_to(csv_import_path(CsvImport.last))
+        end
+
+        it "アップロード画面に行数の上限を案内する" do
+          get new_csv_import_path
+          expect(response.body).to include("取引の行数は 1,000 行まで")
+        end
+      end
+
       it "壊れた CSV（閉じていない引用符）は 422" do
         broken = %("利用日","利用店名・商品名","利用金額"\n"2026/04/01,"NETFLIX.COM",1490\n)
         expect_rejected({ csv_import: { format: "rakuten", file: upload_of(broken) } }, "CSV として読み取れません")
@@ -199,6 +223,21 @@ RSpec.describe "CsvImports", type: :request do
         breakdown = Nokogiri::HTML(body).at_css('[data-testid="csv-import-breakdown"]').text.squish
         expect(breakdown).to eq("サブスク候補 2 ・ サブスクではない 2 ・ 未判定 1 ・ スキップ 1")
         expect(body).to include("既に取り込み済みの取引 1 件はスキップしました")
+      end
+
+      it "AI 判定の上限で送らなかった行があれば、未判定の理由を表示する" do
+        ci = user.csv_imports.create!(filename: "limited.csv", format: :rakuten, status: :completed,
+                                      original_row_count: 3, matched_count: 0, ai_skipped_count: 2)
+        get csv_import_path(ci)
+        message = Nokogiri::HTML(response.body).at_css('[data-testid="csv-import-ai-skipped"]').text.squish
+        expect(message).to include("AI 判定の上限に達したため 2 行は未判定です")
+      end
+
+      it "AI 判定の上限に達していなければ、上限の案内は出さない" do
+        ci = user.csv_imports.create!(filename: "ok.csv", format: :rakuten, status: :completed,
+                                      original_row_count: 3, matched_count: 0)
+        get csv_import_path(ci)
+        expect(response.body).not_to include("AI 判定の上限")
       end
 
       it "すべてスキップされたときは、取り込み済みである旨を表示する" do
