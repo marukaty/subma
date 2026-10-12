@@ -1,15 +1,15 @@
 module Classifiers
   # Tier 2: パターン検出分類器
-  # 「同じ店名・同じ金額が、異なる年月に `min_occurrences` 回以上出現」を繰り返し（サブスク候補）とみなし、
-  # confidence 0.7 でマークする。判定元は次の 2 つで、どちらかを満たせば候補にする。
+  # 同じ店名・同じ金額の取引について、取引日の間隔が「月額相当」または「年額相当」になる
+  # ペアを 1 組以上作れたら繰り返し（サブスク候補）とみなし、confidence 0.7 でマークする。
   #
-  #   1. ユーザーの過去 transactions（直近 `lookback_months` ヶ月）
-  #      - 取り込み中の行と同じ日付のレコードは除外する（同じファイルの再取り込みで自分自身に
-  #        マッチするのを防ぐ）
-  #   2. 今回取り込み中の rows 同士（例: 9 月分と 10 月分を 1 ファイルで取り込んだ場合）
+  # ペアの相手は次の 2 つから探す。
+  #   (a) ユーザーの過去 transactions
+  #       - 月額相当は直近 `lookback_months` ヶ月、年額相当は直近 YEARLY_LOOKBACK_MONTHS ヶ月の履歴
+  #   (b) 今回取り込み中の rows 同士（例: 9/15 と 10/15 を 1 ファイルで取り込んだ場合）
   #
-  # どちらも「同じ年月（YYYY-MM）内の複数件は 1 回」と数える。同月内に偶然同額の利用が
-  # 2 件あっても繰り返しとはみなさない。
+  # 同じ日付同士（自分自身や再取り込みで重複した履歴）は間隔 0 日なのでペアにならない。
+  # 同月内の偶然の同額（数日差）や、9/30 と 10/2 のような月をまたぐ数日差もペアにならない。
   #
   # 店名の比較は完全一致（履歴側の description は正規化前の文字列で保存されているため。
   # NFKC 正規化での比較は保存時の正規化と合わせて別途対応する。ADR-0004 参照）。
@@ -19,24 +19,34 @@ module Classifiers
     Result = Struct.new(:classified, :unclassified, keyword_init: true)
 
     DEFAULT_LOOKBACK_MONTHS = 6
-    DEFAULT_MIN_OCCURRENCES = 2
+    YEARLY_LOOKBACK_MONTHS = 13
 
-    def initialize(user:, lookback_months: DEFAULT_LOOKBACK_MONTHS, min_occurrences: DEFAULT_MIN_OCCURRENCES)
+    # 取引日の間隔（日数）。周期を増やすときは INTERVAL_RULES に追加する
+    # （例: 隔月・3 ヶ月ごとなら 55..65 / 85..95 などを追加）
+    MONTHLY_INTERVAL_RANGE = 25..35
+    YEARLY_INTERVAL_RANGE = 360..370
+
+    # range: ペアとみなす間隔、lookback_months: 履歴を遡る月数（nil なら lookback_months 引数を使う）
+    IntervalRule = Struct.new(:range, :lookback_months, keyword_init: true)
+    INTERVAL_RULES = [
+      IntervalRule.new(range: MONTHLY_INTERVAL_RANGE, lookback_months: nil),
+      IntervalRule.new(range: YEARLY_INTERVAL_RANGE, lookback_months: YEARLY_LOOKBACK_MONTHS)
+    ].freeze
+
+    def initialize(user:, lookback_months: DEFAULT_LOOKBACK_MONTHS)
       @user = user
       @lookback_months = lookback_months
-      @min_occurrences = min_occurrences
     end
 
     # @param rows [Array<Hash>] [{ date:, description:, amount: }, ...]
     # @return [Result]
     def classify(rows)
-      since = @lookback_months.months.ago.to_date
-      months_in_rows = distinct_months_by_key(rows)
+      dates_in_rows = dates_by_key(rows)
       classified = []
       unclassified = []
 
       rows.each do |row|
-        if recurring_in_rows?(row, months_in_rows) || recurring_in_history?(row, since: since)
+        if recurring?(row, dates_in_rows)
           classified << row.merge(
             classification: "subscription",
             classifier: "pattern",
@@ -58,31 +68,37 @@ module Classifiers
       [ row[:description], row[:amount] ]
     end
 
-    def month_of(date)
-      date.strftime("%Y-%m")
-    end
-
-    # 取り込み中の rows を「店名・金額」ごとにまとめ、出現した年月の集合を返す
-    def distinct_months_by_key(rows)
-      rows.each_with_object(Hash.new { |h, k| h[k] = Set.new }) do |row, acc|
-        next if row[:date].nil?
-
-        acc[key_for(row)] << month_of(row[:date])
+    # 取り込み中の rows を「店名・金額」ごとにまとめ、取引日の配列を返す
+    def dates_by_key(rows)
+      rows.each_with_object(Hash.new { |h, k| h[k] = [] }) do |row, acc|
+        acc[key_for(row)] << row[:date] if row[:date]
       end
     end
 
-    def recurring_in_rows?(row, months_in_rows)
-      months_in_rows.fetch(key_for(row), Set.new).size >= @min_occurrences
+    def recurring?(row, dates_in_rows)
+      date = row[:date]
+      return false if date.nil?
+
+      history = history_dates(row)
+      INTERVAL_RULES.any? do |rule|
+        since = (rule.lookback_months || @lookback_months).months.ago.to_date
+        candidates = dates_in_rows.fetch(key_for(row), []) + history.select { |d| d >= since }
+        candidates.any? { |other| rule.range.cover?((date - other).abs) }
+      end
     end
 
-    def recurring_in_history?(row, since:)
-      scope = @user.transactions
-                   .where(description: row[:description])
-                   .where(amount: row[:amount])
-                   .where(transaction_date: since..Date.current)
-      scope = scope.where.not(transaction_date: row[:date]) if row[:date]
+    # description・amount で絞り込んだ履歴の取引日（最も長い遡り期間ぶん）
+    def history_dates(row)
+      since = max_lookback_months.months.ago.to_date
+      @user.transactions
+           .where(description: row[:description])
+           .where(amount: row[:amount])
+           .where(transaction_date: since..Date.current)
+           .pluck(:transaction_date)
+    end
 
-      scope.pluck(:transaction_date).map { |d| month_of(d) }.uniq.size >= @min_occurrences
+    def max_lookback_months
+      INTERVAL_RULES.map { |rule| rule.lookback_months || @lookback_months }.max
     end
   end
 end
