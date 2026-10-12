@@ -32,14 +32,20 @@ module Csv
 
       private
 
-      # 楽天等は SJIS で出力されるため、必要なら自動判定して UTF-8 に変換する。
+      UTF8_BOM = "\uFEFF".freeze
+
+      # カード会社の CSV は UTF-8（BOM 付きを含む）と Shift_JIS が混在するため、自動判定して UTF-8 に変換する。
       # File.binread は ASCII-8BIT で返すので、CSV.parse 用に明示的に UTF-8 を立てる。
+      # 先頭の BOM を残すと 1 行目が「\uFEFF"利用日"」となり、
+      # CSV::MalformedCSVError (Illegal quoting in line 1.) になるため取り除く。
       def decode_to_utf8(text)
-        if text.dup.force_encoding("UTF-8").valid_encoding?
-          text.force_encoding("UTF-8")
-        else
-          text.force_encoding("Shift_JIS").encode("UTF-8", invalid: :replace, undef: :replace)
-        end
+        decoded =
+          if text.dup.force_encoding("UTF-8").valid_encoding?
+            text.force_encoding("UTF-8")
+          else
+            text.force_encoding("Shift_JIS").encode("UTF-8", invalid: :replace, undef: :replace)
+          end
+        decoded.delete_prefix(UTF8_BOM)
       end
 
       def parse_amount(str)
