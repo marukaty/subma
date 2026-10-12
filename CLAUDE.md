@@ -1,115 +1,87 @@
-# SubMa プロジェクト固有 ルール
+# SubMa 開発ルール
 
-このファイルは **グローバル Claude Code 設定のルールを SubMa プロジェクト内では意図的に上書き** するものです。
+Claude Code などの AI 支援ツールと人が共通で守る、このリポジトリの開発ルール。
+技術選定の理由は [docs/adr/](./docs/adr/README.md) と [docs/infrastructure-notes.md](./docs/infrastructure-notes.md) 2 章を参照。
 
-## グローバルルールを上書きする理由
-
-グローバルでは「Cloudflare Workers + D1 + Cloudflare Access + Next.js」を標準構成と定義しているが、SubMa は以下の理由で別構成を採用する（合理的な例外）。
-
-- サブスク・取引・ユーザーの関係が複雑で、集計クエリを含むリレーショナルな設計が本質的に必要（MySQL / Cloud SQL）
-- CSV 取込・AI 分類などの非同期ジョブと定期処理が中心で、Rails + Sidekiq + Cloud Tasks / Scheduler の構成が適している
-- Cloud Run は min-instances=0 でスケールゼロでき、利用が少ない期間のコストをほぼゼロにできる
-- Firebase Auth で Google SSO を少ない実装量で提供できる
-
-## SubMa の固定構成
+## 技術スタック
 
 | 項目 | 採用 |
 |---|---|
 | Ruby | 3.4.5 |
-| Webフレームワーク | Rails 8.1.x（設計書は 7 指定だが 8 にアップグレード） |
-| DB（永続） | MySQL 8.0（Cloud SQL） |
-| DB（リアルタイム） | Firestore |
-| 認証 | Firebase Auth（Google SSO） |
+| Web フレームワーク | Rails 8.1 |
+| フロント | Hotwire（Turbo + Stimulus）+ importmap + Tailwind CSS |
+| DB | MySQL 8.0（本番は Cloud SQL） |
+| 認証 | Firebase Auth（Google SSO）+ Rails 側での ID トークン検証、ログイン許可リスト |
+| ファイル保管 | Active Storage（本番は Cloud Storage、開発・テストはローカルディスク） |
+| 非同期処理 | 本番は Cloud Tasks → Cloud Run の内部エンドポイント。開発・テストは Sidekiq + Redis |
+| AI | Claude API（モデル名は `Classifiers::AiClassifier::MODEL`） |
 | ホスティング | Cloud Run |
-| 非同期ジョブ | Sidekiq + Redis |
-| 定期処理 | Cloud Scheduler + Cloud Tasks |
-| フロント | Hotwire（Turbo + Stimulus）+ Vite + Tailwind |
-| AI | Claude API（claude-sonnet-4-20250514） |
-| IaC | Terraform |
-| CI/CD | GitHub Actions（OIDC + Workload Identity Federation） |
-| 観測 | Cloud Logging + Cloud Monitoring + Lograge |
+| IaC | Terraform（`infra/terraform/`） |
+| CI/CD | GitHub Actions（Workload Identity Federation） |
+| 観測 | Cloud Logging + Lograge |
 
-## 守るべき設計ルール（要件・設計書より）
+## ブランチ運用
 
-### 必読
-- `SubMa_Requirements.md`（要件定義書 / 親フォルダの docx）
-- `SubMa_Design.md`（設計書 兼 開発指示書 / 親フォルダの docx）
-- `development-log.md`（最新エントリで前回コンテキスト把握）
+GitHub のブランチ保護を使っていないため、以下を運用で守る。
 
-### セキュリティ（NFR-S 系）
-- **CSV ファイルは処理後即削除**、永続化禁止（NFR-S-09）
-- Claude API 送信時はユーザー識別子除外、CSV 内 PII はマスク（NFR-S-10）
-- API キー・DB 認証情報は **Secret Manager 経由のみ**、コード直書き禁止
-- Brakeman / bundler-audit を CI で実行、警告ゼロを維持
-- 監査ログを全書き込み操作で記録（AuditLog モデル）
+- **main に直接 push しない**。作業は必ずブランチを切り、PR 経由でマージする
+- main へのマージは squash（線形履歴を保つ）
+- main に強制 push しない。main を削除しない
+- 作業開始時とコミット直前に、現在のブランチが `main` でないことを確認する。`main` にいたら作業を止めてブランチを切る
 
-### AI 利用（AI_USAGE_GUIDELINE.md に従う）
-- **本物のユーザー CSV を Claude / Claude Code に渡さない**。常にダミーデータを使う
-- `AiClassifier#mask_pii` の責務を勝手に削らない
-- AI 生成コードはコミットメッセージに `[ai-assisted]` タグ
-- 使用モデル（Sonnet / Opus）を development-log.md に記録
+ブランチ名:
 
-### コミットメッセージ
-```
-<type>(phase<N>): <subject>
-```
-例: `feat(phase3): Add Rakuten CSV adapter`
-
-type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `infra`
-
-### 不明点・設計判断
-作業を止めて development-log.md に質問記録、リポジトリオーナーに確認。**勝手に進めない**。
-
-## セッション開始時の手順
-
-1. `subma/CLAUDE.md`（本ファイル）を読む
-2. `SubMa_Design.md`（設計書）と `SubMa_Requirements.md`（要件）を必要に応じて参照（リポジトリ外の親フォルダにある docx）
-3. `development-log.md` の最新エントリで前回コンテキスト把握
-4. 現在の Phase / タスクを宣言してから作業開始
-
-## セッション終了時の手順
-
-`development-log.md` に追記:
-
-```
-## YYYY-MM-DD HH:MM (Phase X / Task Y)
-**着手内容**:
-**完了**:
-**未完了・次回引き継ぎ**:
-**使用モデル**: Sonnet / Opus
-**メモ**:
-```
-
-## リポジトリ公開設定
-
-**Private**（CLAUDE.md グローバルルール通り）。理由: Stripe Webhook secret 等の誤コミットリスクを下げるため Private が安全。コードを見せたい時は個別に Collaborator 招待する。
-
-## ブランチ運用規律（GitHub 無料プランの制約により**人とAIで担保**）
-
-GitHub 無料プランの Private リポではブランチ保護ルール / Rulesets を設定できないため、以下を **必ず** 守ること:
-
-### 絶対ルール
-- **main に直接 push しない**。常に feature ブランチを切ってPR経由でマージ
-- main へのマージは **必ず PR 経由**（squash or rebase merge 推奨、線形履歴維持）
-- 強制 push（`git push --force` / `--force-with-lease`）を main に行わない
-- main の削除を行わない
-
-### ブランチ命名
-- 新規機能: `feature/<phase><N>-<short-description>`（例: `feature/phase1-firebase-auth`）
-- バグ修正: `fix/<short-description>`（例: `fix/csv-parser-encoding`）
+- 機能追加: `feature/<short-description>`
+- バグ修正: `fix/<short-description>`
 - インフラ: `infra/<short-description>`
 - ドキュメント: `docs/<short-description>`
 
-### Claude Code（私）の自動チェック責務
-私は作業開始時に以下を確認する:
-1. 現在のブランチが `main` でないこと
-2. もし `main` にいたら、必ず先に `git checkout -b feature/...` でブランチを切ってから作業開始
-3. コミット直前にも再確認、`main` であれば作業を止めてリポジトリオーナーに報告
+## PR
 
-### 将来の検討
-- GitHub Pro 有料化（月 $4 程度）でブランチ保護を物理的にかけられる
-- Phase 1 で「main に直接 push されたら CI で失敗させる」GitHub Actions を導入検討
+- `.github/pull_request_template.md` に沿って書く（変更内容・テスト・セキュリティチェック・関連 ADR）
+- 設計判断を伴う変更は ADR を追加・更新する（`docs/adr/0000-template.md`）
+- ドキュメントと実装の記述がずれないよう、挙動を変えた PR では README・SECURITY.md・ADR・infrastructure-notes の該当箇所も同じ PR で直す
 
-## 書かないこと
+## テスト
 
-応募・求人・企業名・営業などの開発の裏事情、他社名・案件名、課金識別子、本名・ローカルパス・個人メモパス・本番URL、業務用メールは、コード・ドキュメント・ADR・コメント・コミット・PR・issue に書かない。Private でも同じ。技術選定の理由は技術・コスト・運用の根拠で書く。コミット前に `git config user.email` と差分を確認する。
+```bash
+docker compose run --rm web bundle exec rspec
+```
+
+- 挙動を変える変更にはテストを付ける
+- CI（`.github/workflows/ci.yml`）の RSpec・RuboCop・Brakeman・bundler-audit がすべて通ることをマージの条件にする
+
+## コミットメッセージ
+
+```
+<type>(<領域>): <日本語の件名>
+```
+
+例: `fix(csv): UTF-8 BOM 付き CSV の取り込み失敗を修正`
+
+- type: `feat` / `fix` / `docs` / `refactor` / `test` / `chore`、インフラの変更は `infra`
+- 領域: `csv`・`auth`・`ai`・`classifier`・`jobs`・`infra` など、変更した機能の名前
+
+## AI 支援開発
+
+[AI_USAGE_GUIDELINE.md](./AI_USAGE_GUIDELINE.md) に従う。要点:
+
+- **本物の明細 CSV を AI 支援ツールに渡さない**。テストと動作確認には `spec/fixtures/csv/` と `public/samples/` のダミーデータを使う
+- `Classifiers::AiClassifier.mask_pii` の責務（4 桁以上の数字のマスク、ユーザー識別子を送らない）を削らない
+- AI が生成したコードを含むコミットは、本文の末尾に `Co-Authored-By:` 行を付けて示す。件名の末尾に `[ai-assisted]` を付けてもよい
+- AI が生成したコードも、人が差分を読んでからマージする。レビューでは次を必ず確認する
+  - 認証・認可（`current_user` の範囲で検索しているか、検証を省く分岐がないか）
+  - 秘密値・個人情報がコード・ログ・プロンプトに入っていないか
+  - 設定が無いときに安全側（拒否・停止）に倒れるか
+  - テストが実装の都合ではなく、意図した挙動を確かめているか
+
+## セキュリティ
+
+- API キー・DB の認証情報は Secret Manager から環境変数で渡す。コード・tfvars・tfstate に書かない
+- CSV ファイルは取り込みが完了したら削除する（失敗時は再処理のために残し、バケットのライフサイクルで消える。ADR-0005・ADR-0007）
+- Brakeman / bundler-audit の警告ゼロを保つ
+- 書き込み操作は監査ログ（`AuditLog`）に残す
+
+## 不明点・設計判断
+
+判断に迷う点は作業を止め、PR かイシューに書いてリポジトリのオーナーに確認する。

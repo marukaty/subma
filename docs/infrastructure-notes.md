@@ -20,7 +20,7 @@
 ```mermaid
 graph TB
   subgraph Client["ユーザー (Browser)"]
-    Browser[Hotwire UI<br/>Turbo + Stimulus + Vite]
+    Browser[Hotwire UI<br/>Turbo + Stimulus + importmap]
   end
 
   subgraph GitHub["GitHub"]
@@ -32,15 +32,13 @@ graph TB
     direction TB
     AR[Artifact Registry<br/>subma]
     subgraph CloudRun["Cloud Run"]
-      Service[subma-web<br/>Rails 8 / Puma + Thruster<br/>min=0 max=3]
+      Service[subma-web<br/>Rails 8.1 / Puma<br/>min=0 max=3]
       Job[subma-web-migrate<br/>db:prepare Job]
     end
     SQL[(Cloud SQL<br/>MySQL 8.0<br/>db-f1-micro)]
-    Firestore[(Firestore<br/>通知/進捗)]
     Storage[Cloud Storage<br/>CSV 一時]
     SM[Secret Manager<br/>master_key / API keys]
     Tasks[Cloud Tasks<br/>process-csv queue]
-    Scheduler[Cloud Scheduler]
     WIF[Workload Identity<br/>Federation Pool]
     SA1{{SA: subma-run}}
     SA2{{SA: subma-tasks}}
@@ -57,16 +55,13 @@ graph TB
 
   Browser -->|HTTPS| Service
   Browser -->|JS SDK| Auth
-  Browser -.->|JS SDK<br/>realtime| Firestore
   Service -->|JWT検証| Auth
   Service -->|Unix socket<br/>/cloudsql/...| SQL
-  Service -->|"進捗書き込み"| Firestore
   Service -->|CSV一時| Storage
   Service -->|秘匿情報| SM
   Service -->|サブスク抽出| Claude
   Service -->|enqueue| Tasks
   Tasks -->|OIDC| Service
-  Scheduler -->|trigger| Tasks
   Service -.->SA1
   Tasks -.->SA2
 
@@ -89,7 +84,7 @@ graph TB
 |---|---|---|
 | **Cloud Run** | ✅ | コンテナを HTTP リクエストだけで起動できる「サーバレスコンテナ」。min-instances=0 で完全にスケールゼロ可能 → 利用が少ない期間も実質無料 |
 | AWS ECS Fargate | ❌ | 常時 1 タスク稼働で月 $10〜、ALB 別途必須 |
-| Heroku | ❌ | 認証（Firebase Auth）・Firestore と同じ GCP に寄せた方が IAM / Secret / ログを一元管理できる |
+| Heroku | ❌ | 認証（Firebase Auth）と同じ GCP に寄せた方が IAM / Secret / ログを一元管理できる |
 | 自前 VPS | ❌ | TLS 終端・スケール・ロギングを全部自前で組むコスト > サーバレスの便利さ |
 
 ### 2.2 なぜ Cloud SQL（MySQL）か
@@ -101,15 +96,14 @@ graph TB
 | Spanner | ❌ | オーバースペック・コスト高 |
 | AlloyDB | ❌ | 個人開発規模ではオーバースペック |
 
-**ハイブリッド方針**: 永続データ＝Cloud SQL、リアルタイム/通知＝Firestore（後述 ADR-0002）
+永続データはすべて Cloud SQL に置く。Firestore はアプリから使っていない（Terraform でデータベースを作成しているが未使用。3.7）
 
-### 2.3 なぜ Hotwire + Vite（SPA を採用しない）か
+### 2.3 なぜ Hotwire + importmap（SPA を採用しない）か
 
 - Rails 8 標準の Turbo + Stimulus + Tailwind で「サーバ駆動の UX」を実現
 - React/Vue を入れない → ビルド成果物が小さい → Cloud Run のコールドスタートが速い
 - フロントとバックエンドを Rails 1 つに集約し、二重実装（API + SPA）を避ける
-
-詳細: ADR として Phase 5 で書く予定（番号は採番時に決める）
+- JavaScript は importmap で配信し、Node.js のビルド工程を持たない
 
 ### 2.4 なぜ Terraform（IaC）か
 
@@ -228,9 +222,8 @@ GCP API 呼び出し
 
 ### 3.7 その他
 
-- **Firestore**: Native モード、`(default)` database、`delete_protection_state=ENABLED`
+- **Firestore**: Native モード、`(default)` database、`delete_protection_state=ENABLED`。Terraform で作成しているが、アプリからは使っていない
 - **Cloud Tasks**: `process-csv` queue、max-concurrent=2、retry=3（指数バックオフ 10〜300 秒、最初の試行から 30 分で打ち切り）、タスクの dispatch_deadline=900 秒
-- **Cloud Scheduler**: 引落リマインド用 cron（v2 で本格利用）
 - **Artifact Registry**: `subma` Docker repo、asia-northeast1
 
 ---
@@ -243,7 +236,8 @@ GCP API 呼び出し
 ┌───────────────────────────────────────────────┐
 │ レイヤー 1: ネットワーク                       │
 │  - Cloud Run: HTTPS 強制（自動 TLS）           │
-│  - Cloud SQL: 公開 IP だが authorized=空        │
+│  - Cloud SQL: 公開 IP だが authorized は        │
+│    127.0.0.1 のみ                               │
 │    → Cloud SQL Proxy(Unix socket) 経由のみ受付  │
 ├───────────────────────────────────────────────┤
 │ レイヤー 2: 認証                               │
@@ -278,7 +272,7 @@ CSV にはクレカ番号下4桁・氏名・住所がノイズで含まれる可
 
 1. **保管期間最小化**: Cloud Storage の lifecycle で 1 日経過したオブジェクト自動削除
 2. **AI 送信時マスキング**: `AiClassifier#mask_pii` で 4桁以上の数字を `XXXX` に置換してから送信
-3. **永続データの最小化**: `transactions` テーブルには `description`（店名）と `amount` のみ。CSV の生データ列は保持しない
+3. **永続データの最小化**: `transactions` テーブルには `description`（利用店名）・`amount`・`transaction_date` と分類結果だけを保存し、CSV のその他の列は保持しない。利用店名は保存時にマスクしていない（ADR-0005 のフォローアップ）
 
 ---
 
@@ -371,10 +365,9 @@ Cloud Run service の `template[0].containers[0].image` は Terraform の `lifec
 | Cloud SQL `db-f1-micro` | **~$10** | 最大の出費 |
 | Cloud Run | $0〜$2 | idle=$0、リクエスト分のみ |
 | Cloud Storage | < $0.10 | CSV は 1 日で消える |
-| Secret Manager | < $0.10 | 4 secret × $0.06 = $0.24/月 |
+| Secret Manager | ~$0.30 | 5 secret × $0.06 = $0.30/月 |
 | Firestore | $0 | 無料枠内 |
 | Cloud Tasks | $0 | 無料枠 100万ops/月 |
-| Cloud Scheduler | $0 | 3 jobs まで無料 |
 | Artifact Registry | ~$0.50 | ストレージ最小 |
 | Cloud Logging | $0 | 50GB/月まで無料 |
 | **合計** | **~$10〜13** | |
@@ -557,7 +550,7 @@ bin/rails 'csv_imports:retry[<csv_import_id>]'
 
 どちらも status を `uploading` に戻してから `CsvProcessingDispatcher` で登録する。同じユーザーの別の import が処理中なら登録を見送り、その処理が終わったときに古い順に自動で登録される。
 
-### 8.8 AI 利用量の上限と外側の安全網（M-7）
+### 8.8 AI 利用量の上限と外側の安全網
 
 アプリ側では、AI（Claude API）に送る行数に上限を設けている（ADR-0004「利用量の上限」）。
 上限はすべて Cloud Run の環境変数で変えられる。未設定なら既定値で動く。
@@ -640,7 +633,6 @@ Terraform はこれらの版を管理しないので、`terraform apply` で無�
 
 - [`SECURITY.md`](../SECURITY.md): 脅威モデルと対策
 - [`AI_USAGE_GUIDELINE.md`](../AI_USAGE_GUIDELINE.md): AI 利用時の機密情報取扱
-- [`SubMa_Design.md`](../SubMa_Design.md): プロダクト全体設計
-- [`docs/adr/`](./adr/): 個別の意思決定記録
+- [`docs/adr/`](./adr/README.md): 個別の意思決定記録
 
 [ai-assisted]

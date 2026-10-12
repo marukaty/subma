@@ -1,17 +1,42 @@
 # Development Log
 
-Claude Code セッション間の引き継ぎログ。新しいエントリは**先頭**に追加する（最新が上）。
-各 Phase の技術的な記録を要約して残す。
+開発の経過を Phase ごとに要約した記録。新しいエントリは**先頭**に追加する（最新が上）。
 
 ## 担当の切り分け
 
 - **構成の判断（作者）**: 本番を Cloud Run + Cloud SQL の最小構成とし、Memorystore を使わず本番のみ Cloud Tasks に置き換える判断（ADR-0003 Phase 4 追記、コスト根拠）をはじめ、各 ADR の決定は作者が行った。Terraform 定義の PR で確認事項として挙げた GCP プロジェクト ID・state バケット名・削除保護（Cloud SQL / Firestore）の扱いも作者が判断した
 - **運用作業（作者が手元環境で実施）**: Phase 4-C での課金の有効化とプロジェクト紐付け、必要 API の有効化、予算アラート（50% / 80% / 95%）の設定、Terraform state バケットの手動作成、`terraform.tfvars`（Git 管理外）の作成と初回 `terraform apply`、GitHub Variables の登録、Firebase 認可ドメインへの Cloud Run URL の追加、実 Google アカウントでのログイン疎通確認
-- **生成 AI の支援範囲**: Terraform 定義・デプロイ用ワークフロー・初回デプロイ時の修正を含むコードと本ログの記述は、生成 AI（Claude Code）の支援で作成した（Terraform 定義ファイルの冒頭コメントとコミットメッセージの `[ai-assisted]` 表記を参照）。作者が PR の内容を確認してマージし、インフラへの適用を行った
+- **生成 AI の支援範囲**: Terraform 定義・デプロイ用ワークフロー・初回デプロイ時の修正を含むコードと本ログの記述は、生成 AI（Claude Code）の支援で作成した（Terraform 定義ファイルの冒頭コメントと、コミットメッセージの `Co-Authored-By` / `[ai-assisted]` 表記を参照）。作者が PR の内容を確認してマージし、インフラへの適用を行った
 
 ---
 
-## 2026-10-09 (公開前セキュリティ: ログイン許可リスト)
+## 2026-10-10〜10-12 (公開運用に向けた堅牢化)
+
+本番環境を招待制で外部に公開して運用するため、セキュリティ・信頼性・コストの面を見直した（#52〜#68）。
+
+**完了**:
+- **依存関係**: 脆弱性情報のある gem を更新（#54）
+- **本番設定の強化**（#56）: Action Mailbox / Action Text / Action Cable を読み込まない、Active Storage のルートを無効化。`force_ssl` / `assume_ssl`、セッションを最終アクセスから 12 時間で失効、`APP_HOST` による Host ヘッダ検証（未設定なら起動時に停止）
+- **ログイン許可リスト**（#55）: 10-09 のエントリを参照（ADR-0006）
+- **内部エンドポイントの発行元確認**（#57）: Cloud Tasks の OIDC トークンで、iss・aud に加えて発行した SA のメールアドレスを確認。設定が無ければ 500 で拒否し、本番では検証を無効にできない
+- **CSV アップロードの入力検証**（#58）: `params.expect` と Form Object `CsvUploadForm` で、拡張子・Content-Type・サイズ（1MB）・中身（NUL バイト・マジックナンバー・文字コード・先頭 5 行の解釈）を検証し、問題があれば 422
+- **UTF-8 BOM 付き CSV の取り込み失敗を修正**（#62）
+- **本番の Active Storage を Cloud Storage に**（#59）: アップロードを受けたインスタンスとジョブを実行するインスタンスが別でも読めるようにした。認証は実行 SA の ADC
+- **CSV ジョブの冪等化**（#60、ADR-0007）: 行ロックと状態の確認で、同じタスクが複数回届いても処理は 1 回。1 ユーザーの同時処理は 1 件。Cloud Run の timeout と Cloud Tasks の dispatch_deadline を 900 秒にそろえた。失敗時はファイルを残し、画面の「再実行」と rake タスクで再処理できる
+- **判定の改善**: 店名の NFKC 正規化と通信費の対象外化（#63、ADR-0008）。Tier 2 を「件数」から「取引日の間隔」（月額 25〜35 日、年額 360〜370 日）に変更（#64）
+- **再取り込みの重複防止**（#65）: 他の取り込みで保存済みの同じ取引を判定前に除く。既存データの掃除用に `transactions:dedup` を追加。サブスク判定の件数を一覧と一致させた
+- **退会と試用データ**（#66）: 設定画面からアカウントとすべてのデータを削除できる（`AccountDeletion`、1 トランザクション、ファイルはコミット後に削除）。サンプル CSV（`public/samples/sample_rakuten.csv`）を追加
+- **AI 利用量の上限**（#68、ADR-0004「利用量の上限」）: CSV の行数（1,000 行）と、AI に送る行数（取り込み 1 回 300 行、1 ユーザー 1 日 500 行、全体 1 日 2,000 行）に上限。上限を超えた行は未判定として保存。同じ店名・金額の行はまとめて 1 回だけ送る
+- **インフラの権限と秘密値**（#67）: デプロイ SA を `run.developer`・リポジトリ単位の `artifactregistry.writer`・実行 SA への `serviceAccountUser` に縮小。API キー・master key・許可リストの値を Terraform の変数と state から外し、`gcloud secrets versions add` で投入する方式に変更
+- **ドキュメント**（#52、#53、#61）: インフラの判断と運用作業の担当を本ログに明記、全 ADR の決定者の表記を統一
+
+**メモ**:
+- Cloud Tasks は at-least-once 配信のため、受け側の処理は必ず冪等にする
+- Cloud Run 上では複数インスタンスになりうるため、日次の上限などの数え方はメモリではなく DB（行ロック）で行う
+
+---
+
+## 2026-10-09 (公開運用に向けた堅牢化: ログイン許可リスト)
 
 **完了**:
 - `LoginAllowlist` サービス追加。通す条件は `email_verified == true`・`firebase.sign_in_provider == "google.com"`・許可メール（`ALLOWED_LOGIN_EMAILS`、大文字小文字と前後空白を無視）の 3 つすべて
@@ -50,7 +75,7 @@ Claude Code セッション間の引き継ぎログ。新しいエントリは**
 
 **次回**: Phase 5（観測性）: CI 完成 / SLO 設定 / k6 / README 再構成 / デモ動画。引落リマインドの実通知テスト
 
-**コスト管理**: 月額目安 ~$10〜13（Cloud SQL db-f1-micro が支配的）。無料クレジット適用・予算アラート設定済み。クレジット終了前に `terraform destroy` で一時停止する方針（infrastructure-notes D-2）
+**コスト管理**: 月額目安 ~$10〜13（Cloud SQL db-f1-micro が支配的）。無料クレジット適用・予算アラート設定済み。クレジット終了前に `terraform destroy` で一時停止する方針（手順は infrastructure-notes 8.3）
 
 **ハマったポイント**:
 - Cloud Run の `PORT` env は予約名で明示禁止
