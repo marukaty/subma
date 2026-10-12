@@ -80,6 +80,19 @@ RSpec.describe Csv::Parser do
       end
     end
 
+    context "with the downloadable sample (public/samples/sample_rakuten.csv)" do
+      let(:sample_path) { Rails.root.join("public/samples/sample_rakuten.csv") }
+
+      it "is UTF-8 with BOM and parses all 10 rows" do
+        expect(File.binread(sample_path, 3).bytes).to eq([ 0xEF, 0xBB, 0xBF ])
+
+        rows = described_class.new(file_path: sample_path, format: "rakuten").parse
+        expect(rows.size).to eq(10)
+        expect(rows.first).to eq(date: Date.new(2026, 8, 1), description: "NETFLIX.COM", amount: BigDecimal("1490"))
+        expect(rows.map { |r| r[:description] }).to include("SPOTIFY", "AMAZON PRIME 会費")
+      end
+    end
+
     it "skips rows with missing date / description / amount" do
       Tempfile.create([ "broken", ".csv" ]) do |f|
         f.binmode
