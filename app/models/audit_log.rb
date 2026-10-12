@@ -18,4 +18,12 @@ class AuditLog < ApplicationRecord
   # 拒否された人は User を作らないので user は nil。メールアドレスは監査ログに保存しない
   ACTION_AUTH_SIGN_IN_DENIED = "auth.sign_in_denied".freeze
   ACTION_AUTH_SESSION_REVOKED = "auth.session_revoked".freeze
+
+  # 退会（アカウントと全データの削除）
+  # - delete_requested: 削除の依頼を受けた。確認が一致せず削除しなかった場合も記録する
+  # - deleted: 削除が完了した。user は nil（ユーザーはもう存在しない）
+  # 削除が完了したら、この 2 件以外のそのユーザーの監査ログは消し、delete_requested も user_id を null にする
+  # メールアドレスは記録しない
+  ACTION_ACCOUNT_DELETE_REQUESTED = "account.delete_requested".freeze
+  ACTION_ACCOUNT_DELETED = "account.deleted".freeze
 end
