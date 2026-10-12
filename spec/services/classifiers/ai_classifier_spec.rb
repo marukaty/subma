@@ -131,6 +131,61 @@ RSpec.describe Classifiers::AiClassifier do
       end
     end
 
+    describe "応答の値の検証" do
+      let(:row) { { date: Date.new(2026, 4, 1), description: "SAMPLE SERVICE", amount: BigDecimal("980") } }
+
+      def classify_with(entry)
+        allow(messages_resource).to receive(:create)
+          .and_return(fake_message(JSON.generate(results: [ { id: 0 }.merge(entry) ])))
+        result = classifier.classify([ row ])
+        (result.classified + result.unclassified).sole
+      end
+
+      it "is_subscription が真偽値の true のときだけサブスクにする" do
+        expect(classify_with(is_subscription: true, confidence: 0.9)[:classification]).to eq("subscription")
+        expect(classify_with(is_subscription: false, confidence: 0.9)[:classification]).to eq("non_subscription")
+      end
+
+      it "is_subscription が文字列・数値・null・欠落の行は unknown（文字列 \"false\" をサブスク扱いしない）" do
+        [ { is_subscription: "true" }, { is_subscription: "false" }, { is_subscription: 1 },
+          { is_subscription: nil }, {} ].each do |entry|
+          verdict = classify_with(entry.merge(confidence: 0.9))
+          expect(verdict[:classification]).to eq("unknown"), "entry=#{entry}"
+          expect(verdict).not_to have_key(:classifier)
+        end
+      end
+
+      it "confidence は 0..1 に収める" do
+        expect(classify_with(is_subscription: true, confidence: 7)[:confidence]).to eq(1.0)
+        expect(classify_with(is_subscription: true, confidence: -0.5)[:confidence]).to eq(0.0)
+        expect(classify_with(is_subscription: true, confidence: nil)[:confidence]).to be_nil
+      end
+
+      it "confidence が数値でない行は unknown" do
+        expect(classify_with(is_subscription: true, confidence: "0.9")[:classification]).to eq("unknown")
+      end
+
+      it "service_name・category は 100 文字に切り、空なら nil" do
+        verdict = classify_with(is_subscription: true, confidence: 0.9,
+                                service_name: "S" * 300, category: "  ")
+        expect(verdict[:inferred_service_name]).to eq("S" * described_class::MAX_TEXT_LENGTH)
+        expect(verdict[:inferred_category]).to be_nil
+      end
+
+      it "service_name・category が文字列でない行は unknown" do
+        expect(classify_with(is_subscription: true, service_name: { "x" => 1 })[:classification]).to eq("unknown")
+        expect(classify_with(is_subscription: true, category: [ "エンタメ" ])[:classification]).to eq("unknown")
+      end
+
+      it "results がオブジェクトの配列でない・応答全体が配列でも例外にせず unknown" do
+        allow(messages_resource).to receive(:create).and_return(fake_message(JSON.generate(results: [ 1, "x" ])))
+        expect(classifier.classify([ row ]).unclassified.sole[:classification]).to eq("unknown")
+
+        allow(messages_resource).to receive(:create).and_return(fake_message("[1, 2]"))
+        expect(classifier.classify([ row ]).unclassified.sole[:classification]).to eq("unknown")
+      end
+    end
+
     context "応答が ```json ... ``` フェンスで囲まれている場合" do
       before do
         wrapped = "```json\n#{JSON.generate(results: [

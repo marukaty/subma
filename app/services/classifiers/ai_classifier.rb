@@ -26,6 +26,7 @@ module Classifiers
   # フォールバック:
   # - レート制限・サーバー過負荷時は指数バックオフ（最大 MAX_RETRIES 回）
   # - JSON パース失敗 / API 失敗時はその行を unclassified として返す（unknown 扱いで保存される）
+  # - 応答の値が想定の形でない行（真偽値でない is_subscription など）も unknown にする（#verdict_from）
   class AiClassifier
     # skipped_count: 利用量の上限で AI に送らなかった行数（まとめる前の元の行数）
     Result = Struct.new(:classified, :unclassified, :skipped_count, keyword_init: true) do
@@ -41,6 +42,8 @@ module Classifiers
     BATCH_SIZE = 50
     MAX_TOKENS = 8000
     MAX_RETRIES = 3
+    # AI が返すサービス名・カテゴリの最大文字数（これを超える分は切る）
+    MAX_TEXT_LENGTH = 100
 
     SYSTEM_PROMPT = <<~PROMPT.freeze
       あなたはクレジットカード取引明細を分析する専門家です。各取引について、サブスクリプション課金（定期支払い）かどうかを判定してください。
@@ -193,35 +196,48 @@ module Classifiers
       raw = raw.sub(/\A```(?:json)?\s*/, "").sub(/```\s*\z/, "")
 
       parsed = JSON.parse(raw)
-      Array(parsed["results"])
+      parsed.is_a?(Hash) ? Array(parsed["results"]) : []
     rescue JSON::ParserError => e
       Rails.logger.warn("[AiClassifier] JSON parse failed: #{e.message}. raw=#{raw&.first(200)}")
       []
     end
 
     def merge_results(batch, ai_results)
-      results_by_id = ai_results.index_by { |r| r["id"] }
+      results_by_id = ai_results.grep(Hash).index_by { |r| r["id"] }
 
       batch.map do |row|
-        ai = results_by_id[row[:_ai_id]]
-        next row.merge(classification: "unknown") unless ai
-
-        if ai["is_subscription"]
-          row.merge(
-            classification: "subscription",
-            classifier: "ai",
-            confidence: ai["confidence"]&.to_f,
-            inferred_service_name: ai["service_name"],
-            inferred_category: ai["category"]
-          )
-        else
-          row.merge(
-            classification: "non_subscription",
-            classifier: "ai",
-            confidence: ai["confidence"]&.to_f
-          )
-        end
+        verdict = verdict_from(results_by_id[row[:_ai_id]])
+        verdict ? row.merge(verdict) : row.merge(classification: "unknown")
       end
+    end
+
+    # AI の応答 1 件を検証して、行に足す判定結果にする。形が正しくなければ nil（その行は unknown）。
+    # 応答は店名（利用者の入力）を含むプロンプトから作られるので、信頼できない入力として扱う。
+    # - is_subscription: 真偽値の true / false だけを受け付ける（文字列 "false" などは不正）
+    # - confidence: 数値か null。数値は 0..1 に収める（transactions.confidence の検証範囲）
+    # - service_name / category: 文字列か null。MAX_TEXT_LENGTH 文字に切る（列長を超えないように）
+    def verdict_from(ai)
+      return nil unless ai.is_a?(Hash) && [ true, false ].include?(ai["is_subscription"])
+
+      confidence = ai["confidence"]
+      return nil unless confidence.nil? || confidence.is_a?(Numeric)
+
+      service_name = ai["service_name"]
+      category = ai["category"]
+      return nil unless [ service_name, category ].all? { |v| v.nil? || v.is_a?(String) }
+
+      verdict = { classifier: "ai", confidence: confidence&.to_f&.clamp(0.0, 1.0) }
+      return verdict.merge(classification: "non_subscription") unless ai["is_subscription"]
+
+      verdict.merge(
+        classification: "subscription",
+        inferred_service_name: limit_text(service_name),
+        inferred_category: limit_text(category)
+      )
+    end
+
+    def limit_text(value)
+      value&.strip&.first(MAX_TEXT_LENGTH).presence
     end
   end
 end
