@@ -63,6 +63,17 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 3. **完了後: Cloud Storage の元 CSV を即削除**（NFR-S-09）
 4. transactions テーブルには「分類結果」のみ残す（PII 最小化）
 
+### アップロード時の入力検証
+
+保存（Active Storage への attach）とジョブ投入の前に `CsvUploadForm`（`app/forms/csv_upload_form.rb`）で検証し、問題があれば 422 で入力画面を再表示する（500 にしない）。
+
+- パラメータは `params.expect(csv_import: [:file, :format])` で受け取り、それ以外のキーは無視する
+- ファイル必須。拡張子は `.csv` のみ、Content-Type は `text/csv` / `text/plain` / `application/vnd.ms-excel` のみ
+- サイズ上限は 1MB（環境変数 `CSV_MAX_UPLOAD_BYTES` でバイト数を指定可。未設定・不正値なら 1,048,576）。空ファイルは拒否
+- 中身の確認: 先頭 16KB を読み、NUL バイトを含むもの・マジックナンバーで画像や ZIP 等と判定されるものは拒否。UTF-8 または Windows-31J（Shift_JIS）として読めること、先頭 5 行が CSV として解釈できることを確認
+- format は `CsvImport.formats` と `Csv::Parser::ADAPTERS` の両方にある値（実装済みのアダプタ）のみ
+- 保存するファイル名はパス部分を除き、拡張子を残して 100 文字に切る
+
 ## AI への送信ルール
 
 - 詳細: [AI_USAGE_GUIDELINE.md](./AI_USAGE_GUIDELINE.md)

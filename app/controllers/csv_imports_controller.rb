@@ -1,36 +1,33 @@
 class CsvImportsController < ApplicationController
   before_action :authenticate_user!
 
-  MAX_UPLOAD_SIZE = 5.megabytes  # 要件 §3.1 F-04
+  # 入力検証のエラーメッセージ（config/locales/ja.yml）を日本語で出す
+  around_action :use_japanese_locale, only: %i[new create]
 
   def index
     @csv_imports = current_user.csv_imports.recent.limit(50)
   end
 
   def new
-    @csv_import = current_user.csv_imports.new(format: :rakuten, status: :uploading)
+    @upload = CsvUploadForm.new(format: CsvUploadForm.supported_formats.first)
+    @csv_import = build_form_model(@upload)
   end
 
   def create
-    file = params[:csv_import][:file]
-    format = params[:csv_import][:format].presence || "rakuten"
+    @upload = CsvUploadForm.new(upload_params)
 
-    if file.blank?
-      redirect_to new_csv_import_path, alert: "CSV ファイルを選択してください"
-      return
-    end
-
-    if file.size > MAX_UPLOAD_SIZE
-      redirect_to new_csv_import_path, alert: "ファイルサイズは 5MB まで対応しています"
+    unless @upload.valid?
+      @csv_import = build_form_model(@upload)
+      render :new, status: :unprocessable_content
       return
     end
 
     csv_import = current_user.csv_imports.create!(
-      filename: file.original_filename,
-      format: format,
+      filename: @upload.sanitized_filename,
+      format: @upload.format,
       status: :uploading
     )
-    csv_import.file.attach(file)
+    csv_import.file.attach(@upload.attachable)
     @audit_resource = csv_import
 
     # Phase 4: 直接 ProcessCsvJob.perform_later を呼ばず、ディスパッチャ経由にする
@@ -84,5 +81,24 @@ class CsvImportsController < ApplicationController
   rescue ActiveRecord::RecordInvalid => e
     redirect_to csv_import_path(@csv_import),
                 alert: "登録に失敗しました: #{e.message}"
+  end
+
+  private
+
+  # csv_import キーが無い・形が違うときも 400 / 500 にせず、空の入力として検証に回す
+  def upload_params
+    params.expect(csv_import: [ :file, :format ])
+  rescue ActionController::ParameterMissing
+    {}
+  end
+
+  # フォームの name 属性（csv_import[...]）を保つための入れ物。保存はしない
+  def build_form_model(upload)
+    format = CsvUploadForm.supported_formats.include?(upload.format) ? upload.format : CsvUploadForm.supported_formats.first
+    current_user.csv_imports.new(format: format, status: :uploading)
+  end
+
+  def use_japanese_locale(&)
+    I18n.with_locale(:ja, &)
   end
 end
