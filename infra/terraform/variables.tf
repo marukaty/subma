@@ -1,8 +1,10 @@
 # 入力変数定義
 #
 # 値は terraform.tfvars または環境変数（TF_VAR_xxx）で渡す。
-# 機密値（DB パスワード等）は本ファイルや tfvars に直書きせず、
-# Terraform が random_password で自動生成 → Secret Manager に格納する設計。
+# 機密値は本ファイルや tfvars に入れない:
+#   - DB パスワード: Terraform が random_password で自動生成 → Secret Manager に格納
+#   - API キー等の外部の秘密値: Secret の器だけ Terraform で作り、値は gcloud で投入
+#     （secret_manager.tf / docs/infrastructure-notes.md 8.7）
 #
 # [ai-assisted]
 
@@ -18,29 +20,11 @@ variable "github_repository" {
   type        = string
 }
 
-# ---------- アプリ秘密値（Secret Manager に格納） ----------
-
-variable "rails_master_key" {
-  description = "Rails master.key の中身（config/master.key の値）"
-  type        = string
-  sensitive   = true
-}
-
-variable "anthropic_api_key" {
-  description = "Anthropic Claude API キー"
-  type        = string
-  sensitive   = true
-}
+# ---------- Firebase 設定（ブラウザ側公開値） ----------
 
 variable "firebase_project_id" {
   description = "Firebase プロジェクト ID（Auth の aud 検証用）"
   type        = string
-}
-
-variable "firebase_web_api_key" {
-  description = "Firebase Web SDK の apiKey（クライアント側で公開可能だが、運用上は Secret 経由で配布）"
-  type        = string
-  sensitive   = true
 }
 
 variable "firebase_auth_domain" {

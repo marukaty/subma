@@ -137,7 +137,7 @@ resource "google_cloud_run_v2_service" "web" {
 
       # ログイン許可リスト（ADR-0006）。値は gcloud で帯域外投入（Terraform 管理外）
       # "latest" は新しいリビジョンの起動時に解決される。値を更新したら新リビジョンを作ること
-      # （手順: docs/infrastructure-notes.md 8.4）
+      # （手順: docs/infrastructure-notes.md 8.5）
       env {
         name = "ALLOWED_LOGIN_EMAILS"
         value_source {
@@ -223,7 +223,7 @@ resource "google_cloud_run_v2_service" "web" {
 
   depends_on = [
     google_project_service.required_apis,
-    google_secret_manager_secret_version.subma,
+    google_secret_manager_secret_version.cloud_sql_app_password,
     google_secret_manager_secret_iam_member.cloud_run_accessor,
     google_secret_manager_secret_iam_member.allowed_login_emails_accessor,
   ]
