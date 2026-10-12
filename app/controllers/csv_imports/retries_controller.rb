@@ -4,6 +4,8 @@
 #   - 本人の import だけ（他人の ID は 404）
 #   - failed / 止まった processing → uploading に戻してから CsvProcessingDispatcher で登録
 #   - アップロードファイルが残っていない場合は再アップロードを案内する
+#
+# [ai-assisted]
 module CsvImports
   class RetriesController < ApplicationController
     before_action :authenticate_user!

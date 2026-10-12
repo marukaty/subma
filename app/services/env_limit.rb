@@ -1,6 +1,8 @@
 # 上限値を環境変数から読む（CSV の行数・AI に送る行数など）。
 #
 # 未設定・数値でない・下限より小さいときは既定値を使う（設定ミスで上限が外れないように）。
+#
+# [ai-assisted]
 module EnvLimit
   # @param name [String] 環境変数名
   # @param default [Integer] 既定値

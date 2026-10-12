@@ -19,6 +19,8 @@
 # 再ログインすると、許可リストに入っている限り新しいユーザーとして作られる。
 #
 # 監査ログにはメールアドレスを保存しない（ADR-0006 と同じ方針）。
+#
+# [ai-assisted]
 class AccountDeletion
   def initialize(user:, request_log: nil, ip_address: nil, user_agent: nil)
     @user = user

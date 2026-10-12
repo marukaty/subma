@@ -12,6 +12,8 @@
 #
 # 上限を超える分は送らない（呼び出し側が unknown で保存する）。処理全体は失敗させない。
 # 予約した行数は、API 呼び出しが失敗しても戻さない（課金された可能性があり、安全側に倒す）。
+#
+# [ai-assisted]
 class AiUsageLimiter
   DEFAULT_MAX_ROWS_PER_IMPORT = 300
   DEFAULT_MAX_ROWS_PER_USER_PER_DAY = 500

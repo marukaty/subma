@@ -7,6 +7,8 @@ require "csv"
 #
 # 行数の上限（ADR-0004「利用量の上限」）: AI 判定のコストは行数に比例するため、取引の行数（ヘッダを除く）が
 # CSV_MAX_ROWS を超えるファイルは受け付けない。サイズ上限（1MB）の範囲なので全体を読んで数える。
+#
+# [ai-assisted]
 class CsvUploadForm
   include ActiveModel::Model
   include ActiveModel::Attributes

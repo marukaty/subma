@@ -6,6 +6,8 @@
 #   - 取り込みの古い順に見て、それまでの取り込みで保存済みの件数を超えた分だけを残す
 #     （同じ CSV 内の正当な複数件は残り、別の取り込みで重ねて保存された分だけが削除候補になる）
 #   - 同じ取り込みの中では id の小さい（先に保存された）行を残す
+#
+# [ai-assisted]
 class TransactionDeduplicator
   # transaction: 削除候補、kept_id: 残す側の同じ取引の id（同じ取り込み内で残るものがあればその id）
   Duplicate = Struct.new(:transaction, :kept_id, keyword_init: true)

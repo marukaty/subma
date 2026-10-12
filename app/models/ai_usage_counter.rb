@@ -1,6 +1,8 @@
 # AI（Claude API）に送った行数の日次カウンタ（AI 利用料の上限。ADR-0004「利用量の上限」）。
 # user_id があればそのユーザーの行数、NULL なら全ユーザー合計の行数。
 # 読み書きは AiUsageLimiter を通す（上限の確認と加算を同じロックの中で行うため）。
+#
+# [ai-assisted]
 class AiUsageCounter < ApplicationRecord
   # 全体の行の user_key（生成列 COALESCE(user_id, 0)）
   GLOBAL_KEY = 0
