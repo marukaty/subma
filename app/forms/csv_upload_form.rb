@@ -3,13 +3,16 @@ require "csv"
 # CSV アップロードの入力検証（POST /csv_imports）。
 #
 # ファイル本体は信頼できない入力として扱い、保存（attach）やジョブ投入の前に
-# ここで形式・サイズ・中身を確認する。検証ルールを足すときは validate を追加する
-# （例: 行数の上限は全行を読む別の検証として追加できる）。
+# ここで形式・サイズ・中身を確認する。検証ルールを足すときは validate を追加する。
+#
+# 行数の上限（M-7）: AI 判定のコストは行数に比例するため、取引の行数（ヘッダを除く）が
+# CSV_MAX_ROWS を超えるファイルは受け付けない。サイズ上限（1MB）の範囲なので全体を読んで数える。
 class CsvUploadForm
   include ActiveModel::Model
   include ActiveModel::Attributes
 
   DEFAULT_MAX_BYTES = 1_048_576 # 1MB。環境変数 CSV_MAX_UPLOAD_BYTES で変更可
+  DEFAULT_MAX_ROWS = 1_000 # 取引の行数（ヘッダを除く）。環境変数 CSV_MAX_ROWS で変更可
   ALLOWED_EXTENSIONS = %w[.csv].freeze
   # Windows で Excel が入っていると .csv は application/vnd.ms-excel として送られる
   ALLOWED_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel].freeze
@@ -41,6 +44,10 @@ class CsvUploadForm
     bytes.positive? ? bytes : DEFAULT_MAX_BYTES
   rescue ArgumentError
     DEFAULT_MAX_BYTES
+  end
+
+  def self.max_rows
+    EnvLimit.integer("CSV_MAX_ROWS", default: DEFAULT_MAX_ROWS)
   end
 
   # 画面表示用（例: "1MB"、"512KB"）
@@ -89,10 +96,15 @@ class CsvUploadForm
 
   # 1 つ目に見つかった問題だけを返す（中身の検証は、拡張子・種類・サイズが正しいときだけ行う）
   def file_attributes_must_be_valid
-    error = extension_error || content_type_error || size_error || content_error
+    error = extension_error || content_type_error || size_error || content_error || row_count_error
     return unless error
 
-    options = error == :too_large ? { max_size: self.class.max_size_label } : {}
+    options =
+      case error
+      when :too_large then { max_size: self.class.max_size_label }
+      when :too_many_rows then { max_rows: self.class.max_rows.to_fs(:delimited) }
+      else {}
+      end
     errors.add(:file, error, **options)
   end
 
@@ -122,6 +134,38 @@ class CsvUploadForm
     :malformed_csv if rows.blank?
   rescue CSV::MalformedCSVError
     :malformed_csv
+  end
+
+  # ヘッダを除いた行数が上限を超えていないか。空行は数えない。
+  # 上限を 1 行でも超えた時点で数えるのをやめる（全行を配列に持たない）。
+  def row_count_error
+    max_rows = self.class.max_rows
+    count = 0
+    CSV.new(decode_all(read_all)).each do |row|
+      next if row.compact.empty?
+
+      count += 1
+      # 1 行目はヘッダなので、上限 + 1 行を超えたら取引が上限を超えている
+      return :too_many_rows if count > max_rows + 1
+    end
+    nil
+  rescue CSV::MalformedCSVError
+    :malformed_csv
+  end
+
+  def read_all
+    io = upload_io
+    io.rewind
+    io.read.to_s.b
+  ensure
+    io&.rewind
+  end
+
+  # 行数を数えるための変換。先頭の検証で文字コードは確認済みなので、
+  # 途中に読めないバイトがあっても置き換えて数える（取り込み時の BaseAdapter と同じ扱い）
+  def decode_all(bytes)
+    decode(bytes) ||
+      bytes.dup.force_encoding(Encoding::Windows_31J).encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
   end
 
   def read_head

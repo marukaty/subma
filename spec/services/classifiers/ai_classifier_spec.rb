@@ -215,5 +215,92 @@ RSpec.describe Classifiers::AiClassifier do
         expect(messages_resource).to have_received(:create).twice
       end
     end
+
+    describe "同じ店名・金額の行をまとめて送る（M-7）" do
+      let(:fake) { FakeAnthropicClient.new(subscriptions: [ "AMAZON PRIME" ]) }
+      let(:classifier) { described_class.new(client: fake) }
+
+      def row(description, amount, day = 1)
+        { date: Date.new(2026, 4, day), description: description, amount: BigDecimal(amount.to_s) }
+      end
+
+      it "正規化後の店名と金額が同じ行は 1 回だけ送り、結果を全行に当てる" do
+        rows = [
+          row("AMAZON PRIME", 600, 1),
+          row("amazon prime", 600, 2),
+          row("ＡＭＡＺＯＮ　ＰＲＩＭＥ", 600, 3),
+          row("AMAZON  PRIME ", "600.0", 4)
+        ]
+        result = classifier.classify(rows)
+
+        expect(fake.sent_rows.size).to eq(1)
+        expect(result.classified.size).to eq(4)
+        expect(result.classified.map { |r| r[:classification] }.uniq).to eq([ "subscription" ])
+        expect(result.classified.map { |r| r[:inferred_service_name] }.uniq).to eq([ "AMAZON PRIME" ])
+        # 日付・店名の表記は元の行のまま
+        expect(result.classified.map { |r| r[:date].day }).to eq([ 1, 2, 3, 4 ])
+        expect(result.classified.map { |r| r[:description] }).to eq(rows.map { |r| r[:description] })
+      end
+
+      it "店名が同じでも金額が違えば別々に送る（汎用の店名は金額で判定が変わる）" do
+        classifier.classify([ row("AMAZON.CO.JP", 600), row("AMAZON.CO.JP", 3_280), row("AMAZON.CO.JP", 600, 2) ])
+        expect(fake.sent_rows.map { |r| [ r["description"], r["amount"] ] }).to eq([ [ "AMAZON.CO.JP", "600.0" ], [ "AMAZON.CO.JP", "3280.0" ] ])
+      end
+
+      it "マスク後に同じになる店名はまとめる（AI に送る内容が同じため）" do
+        classifier.classify([ row("SHOP 12345678", 500), row("SHOP 87654321", 500) ])
+        expect(fake.sent_rows.size).to eq(1)
+        expect(fake.sent_rows.first["description"]).to eq("SHOP XXXX")
+      end
+
+      it "100 行が同じ店名・金額でも、API に送るのは 1 行" do
+        result = classifier.classify(Array.new(100) { |i| row("SAME SHOP", 1_000, (i % 28) + 1) })
+        expect(fake.requests.size).to eq(1)
+        expect(fake.sent_rows.size).to eq(1)
+        expect(result.classified.size).to eq(100)
+      end
+
+      it "代表行の判定が得られなければ、同じキーの行はすべて unknown" do
+        allow(fake).to receive(:create).and_raise(StandardError, "boom")
+        result = classifier.classify([ row("X SHOP", 100), row("X SHOP", 100, 2) ])
+        expect(result.unclassified.map { |r| r[:classification] }).to eq(%w[unknown unknown])
+        expect(result.skipped_count).to eq(0)
+      end
+    end
+
+    describe "利用量の上限（limiter）" do
+      let(:fake) { FakeAnthropicClient.new }
+      let(:classifier) { described_class.new(client: fake) }
+      let(:limiter) { instance_double(AiUsageLimiter) }
+
+      def row(description, amount = 100)
+        { date: Date.new(2026, 4, 1), description: description, amount: BigDecimal(amount.to_s) }
+      end
+
+      it "まとめた後の件数で予約し、許された件数だけ先頭から送る" do
+        allow(limiter).to receive(:reserve).with(3).and_return(2)
+        rows = [ row("A"), row("B"), row("B"), row("C"), row("C") ]
+
+        result = classifier.classify(rows, limiter: limiter)
+
+        expect(fake.sent_rows.map { |r| r["description"] }).to eq(%w[A B])
+        expect(result.classified.map { |r| r[:description] }).to eq(%w[A B B])
+        expect(result.unclassified.map { |r| [ r[:description], r[:classification] ] }).to eq([ %w[C unknown], %w[C unknown] ])
+        expect(result.skipped_count).to eq(2)
+      end
+
+      it "0 件しか許されなければ API を呼ばない" do
+        allow(limiter).to receive(:reserve).and_return(0)
+        result = classifier.classify([ row("A"), row("B") ], limiter: limiter)
+        expect(fake.requests).to be_empty
+        expect(result.skipped_count).to eq(2)
+        expect(result.unclassified.size).to eq(2)
+      end
+
+      it "limiter を渡さなければ上限なし（skipped_count は 0）" do
+        result = classifier.classify([ row("A") ])
+        expect(result.skipped_count).to eq(0)
+      end
+    end
   end
 end
