@@ -32,14 +32,32 @@
       </div>
       <% if @csv_import.original_row_count %>
         <div class="text-right">
-          <p class="text-xs text-gray-500">取引行数 / サブスク判定</p>
-          <p class="text-lg font-semibold text-gray-800 mt-1">
-            <%= @csv_import.original_row_count %> 件 /
-            <span class="text-blue-600"><%= @csv_import.matched_count || 0 %> 件</span>
-          </p>
+          <% if @csv_import.status_completed? %>
+            <%# 件数は下の一覧と同じ取引から数える（サブスク判定 = classification が subscription の取引だけ） %>
+            <% counts = @transactions.map(&:classification).tally %>
+            <p class="text-xs text-gray-500">取引行数 / サブスク判定</p>
+            <p class="text-lg font-semibold text-gray-800 mt-1">
+              <%= @csv_import.original_row_count %> 件 /
+              <span class="text-blue-600"><%= counts.fetch("subscription", 0) %> 件</span>
+            </p>
+            <p class="text-xs text-gray-500 mt-1" data-testid="csv-import-breakdown">
+              サブスク候補 <%= counts.fetch("subscription", 0) %> ・
+              サブスクではない <%= counts.fetch("non_subscription", 0) %> ・
+              未判定 <%= counts.fetch("unknown", 0) %> ・
+              スキップ <%= @csv_import.skipped_duplicate_count %>
+            </p>
+          <% else %>
+            <p class="text-xs text-gray-500">取引行数</p>
+            <p class="text-lg font-semibold text-gray-800 mt-1"><%= @csv_import.original_row_count %> 件</p>
+          <% end %>
         </div>
       <% end %>
     </div>
+    <% if @csv_import.status_completed? && @csv_import.skipped_duplicate_count.positive? %>
+      <p class="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mt-3">
+        既に取り込み済みの取引 <%= @csv_import.skipped_duplicate_count %> 件はスキップしました（同じ日付・利用店名・金額の取引が、以前の取り込みで保存されています）。
+      </p>
+    <% end %>
     <% if waiting %>
       <p class="text-xs text-gray-400 mt-3">
         ⏳ 処理中です。このページは自動更新されます…
@@ -176,7 +194,11 @@
 
   <% elsif @csv_import.status_completed? && @transactions.empty? %>
     <div class="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400 text-sm">
-      取引が抽出されませんでした
+      <% if @csv_import.skipped_duplicate_count.positive? %>
+        新しい取引はありませんでした（すべて取り込み済みです）
+      <% else %>
+        取引が抽出されませんでした
+      <% end %>
     </div>
   <% elsif @csv_import.status_failed? %>
     <div class="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
