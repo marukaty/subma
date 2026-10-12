@@ -137,3 +137,7 @@ ENABLE_OIDC_VERIFICATION  # production では常に true（dev で疎通確認�
 
 - **Phase 4 PR-B**: Terraform で Cloud Tasks Queue / Cloud Run / Cloud SQL / Secret Manager を定義
 - **Phase 4 PR-C**: 実 GCP プロジェクトへのデプロイ・統合動作確認
+
+## 追記（2026-10）: CSV の文字コード判定と BOM
+
+- 2026-10 の本番確認で、UTF-8 BOM 付き CSV（楽天カードのダウンロード形式）が `CSV::MalformedCSVError (Illegal quoting in line 1.)` で取り込みに失敗する不具合を検出・修正した。`Csv::Adapters::BaseAdapter#decode_to_utf8` が UTF-8 と判定した際に先頭の BOM を残していたことが原因で、判定後に BOM を除去するようにした（Shift_JIS 経由でも同様に除去）。
