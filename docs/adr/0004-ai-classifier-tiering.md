@@ -182,8 +182,8 @@ parse → Tier 1 → Tier 2 → Tier 3 → save_transactions → purge_csv_file 
 - AI 出力の信頼度を最終的にユーザーが目視確認する設計のため、完全自動化はしていない
 
 ### フォローアップ
-- Phase 4: Cloud Tasks への移行検討（ADR-0003 と統合判断）
-- Phase 5: Anthropic Console での月予算アラート設定（手順は `docs/infrastructure-notes.md` 8.8。アプリ側の上限は「利用量の上限」節）
+- ✅ 本番の非同期処理を Cloud Tasks に移行（ADR-0003 の追記）
+- Anthropic Console での月予算アラート設定（手順は `docs/infrastructure-notes.md` 8.8。アプリ側の上限は「利用量の上限」節）
 - 学習データ蓄積: ユーザーがレビュー時に AI 判定を修正したケースを匿名化保存して将来の Tier 1 パターン強化に活かす（v2 以降）
 
 ## 参考

@@ -12,7 +12,7 @@ CSV 取り込みは以下の長時間処理を含み、リクエスト・レス�
 - CSV パース（最大 5MB / 数千行）
 - 規則ベース判定（ServiceTemplate との正規表現マッチ）
 - パターン検出（過去 transactions の集計）
-- AI 判定（Claude API、バッチ呼び出し、応答数秒〜十数秒、PR-C で実装）
+- AI 判定（Claude API、バッチ呼び出し、応答数秒〜十数秒）
 
 設計書 §5 では「Sidekiq で非同期実行」と指定されている。
 
@@ -78,8 +78,8 @@ CSV 取り込みは以下の長時間処理を含み、リクエスト・レス�
 
 ### 背景
 
-Phase 4（D-1 構成）では本番を Cloud Run + Cloud SQL の最小構成にしたい。
-Sidekiq + Redis を本番で動かすには Memorystore for Redis（最低 $40/月〜）が必要となり、月額目安 $8〜17 の D-1 構成と整合しない。
+Phase 4 では本番を Cloud Run + Cloud SQL の最小構成（Cloud Run 単体構成）にしたい。
+Sidekiq + Redis を本番で動かすには Memorystore for Redis（最低 $40/月〜）が必要となり、月額 $10 前後を目安とするこの構成と整合しない。
 
 ### 決定
 
@@ -133,11 +133,13 @@ CLOUD_TASKS_SA_EMAIL      # Cloud Tasks が OIDC を発行する Service Account
 ENABLE_OIDC_VERIFICATION  # production では常に true（dev で疎通確認したい場合に true 化）
 ```
 
-### 後続 PR
+### 後続作業（完了）
 
-- **Phase 4 PR-B**: Terraform で Cloud Tasks Queue / Cloud Run / Cloud SQL / Secret Manager を定義
-- **Phase 4 PR-C**: 実 GCP プロジェクトへのデプロイ・統合動作確認
+- Terraform で Cloud Tasks Queue / Cloud Run / Cloud SQL / Secret Manager を定義
+- 実 GCP プロジェクトへのデプロイ・統合動作確認
+- 冪等化・タイムアウトの整合・再実行は ADR-0007、内部エンドポイントの発行元確認は SECURITY.md の T-11 を参照
 
 ## 追記（2026-10）: CSV の文字コード判定と BOM
 
 - 2026-10 の本番確認で、UTF-8 BOM 付き CSV（楽天カードのダウンロード形式）が `CSV::MalformedCSVError (Illegal quoting in line 1.)` で取り込みに失敗する不具合を検出・修正した。`Csv::Adapters::BaseAdapter#decode_to_utf8` が UTF-8 と判定した際に先頭の BOM を残していたことが原因で、判定後に BOM を除去するようにした（Shift_JIS 経由でも同様に除去）。
+- 2026-10: 文字コードの判定を、アップロード時の検証（`CsvUploadForm`）と取り込み時のデコードの両方で Windows-31J にそろえた。Shift_JIS として読むと、機種依存文字（①・㈱ など）を含む明細が検証を通ったあとに取り込みで化けるため
