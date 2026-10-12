@@ -160,15 +160,22 @@ VPC connector 不要、Cloud SQL Auth Proxy も Cloud Run が透過的に提供�
 
 ### 3.3 Secret Manager
 
-| Secret 名 | 用途 |
-|---|---|
-| `rails-master-key` | Rails encrypted credentials の復号 |
-| `anthropic-api-key` | Claude API 呼び出し（Tier 3 分類器）|
-| `firebase-web-api-key` | Browser 側 Firebase SDK 初期化（コードに埋め込まない方針）|
-| `cloud-sql-app-password` | Terraform が `random_password` で自動生成 |
-| `allowed-login-emails` | ログイン許可リスト（カンマ区切りのメールアドレス）。**器だけ Terraform で作り、値は gcloud で帯域外投入**（tfvars・tfstate に個人情報を入れない。手順は 8.5）|
+| Secret 名 | 用途 | 値の管理 |
+|---|---|---|
+| `rails-master-key` | Rails encrypted credentials の復号 | gcloud で投入（8.9）|
+| `anthropic-api-key` | Claude API 呼び出し（Tier 3 分類器）| gcloud で投入（8.9）|
+| `firebase-web-api-key` | Browser 側 Firebase SDK 初期化（コードに埋め込まない方針）| gcloud で投入（8.9）|
+| `cloud-sql-app-password` | Cloud SQL のアプリ用ユーザーのパスワード | Terraform（`random_password` で生成し、DB ユーザーと Secret の両方に設定）|
+| `allowed-login-emails` | ログイン許可リスト（カンマ区切りのメールアドレス）| gcloud で投入（8.5）|
 
-Cloud Run の `env.value_source.secret_key_ref` で参照。アプリコードからは普通の環境変数として読める。
+**Terraform が管理するのは Secret の器（`google_secret_manager_secret`）と、Cloud Run SA の accessor 権限だけ**。
+外から持ち込む値（API キー・master key・許可メール）は Terraform の変数・tfvars・tfstate に入れず、`gcloud secrets versions add` で帯域外に投入する。
+
+- tfstate には `secret_version` の値が平文で残るため、state バケットを読める人が全 Secret を読めてしまう
+- Terraform が版を管理していると、漏洩・ローテーションで手動無効化した版を次の `terraform apply` が有効に戻してしまう
+- 例外の `cloud-sql-app-password` は値の出どころが Terraform 自身（`random_password`）で、`google_sql_user` に同じ値を設定している。DB ユーザーと Secret の値がずれないよう、版も Terraform が管理する（この値は `google_sql_user` として state に残る）
+
+Cloud Run の `env.value_source.secret_key_ref`（`version = "latest"`）で参照。アプリコードからは普通の環境変数として読める。
 
 ### 3.4 Service Accounts と最小権限
 
@@ -176,7 +183,19 @@ Cloud Run の `env.value_source.secret_key_ref` で参照。アプリコード�
 |---|---|---|
 | `subma-run` | Cloud Run runtime | cloudsql.client / secretmanager.secretAccessor / cloudtasks.enqueuer / storage.objectAdmin (CSV bucket only) |
 | `subma-tasks` | Cloud Tasks OIDC | run.invoker (subma-web only) |
-| `subma-deployer` | GitHub Actions deploy | run.admin / cloudsql.admin / secretmanager.admin / artifactregistry.writer / iam.serviceAccountUser / storage.admin |
+| `subma-deployer` | GitHub Actions deploy | run.developer / artifactregistry.writer (subma repository only) / iam.serviceAccountUser (subma-run SA only) |
+
+`subma-deployer` の権限は `deploy.yml` が実際に行う操作から決めている。
+
+| deploy.yml の操作 | 必要なロール | 付与範囲 |
+|---|---|---|
+| `docker push`（Artifact Registry） | `roles/artifactregistry.writer` | リポジトリ `subma` のみ |
+| `gcloud run deploy`（image 差し替え） | `roles/run.developer` | プロジェクト |
+| `gcloud run jobs update` / `execute --wait` | `roles/run.developer`（`run.jobs.run` を含む） | プロジェクト |
+| `gcloud run services describe`（URL 表示） | `roles/run.developer` | プロジェクト |
+| 実行 SA `subma-run` を指定した revision / job の作成 | `roles/iam.serviceAccountUser` | `subma-run` SA のみ |
+
+付与しないもの: `run.admin`（差分は IAM ポリシー変更。CI に invoker 設定を変えさせない）、`cloudsql.admin`（マイグレーション Job は実行 SA `subma-run` として DB に接続する）、`secretmanager.admin`（CI は Secret を読み書きしない）、`storage.admin`（CI は Cloud Storage を使わない）。
 
 ### 3.5 Workload Identity Federation
 
@@ -337,7 +356,7 @@ subma-deployer SA
 |---|---|---|
 | インフラ定義（IAM/Secret/SQL/Bucket 等）| Terraform | 構成変更を git で追跡 |
 | アプリ image 差し替え | GitHub Actions | リリース頻度が高いため CI で完結したい |
-| Secret 値の追加・更新 | gcloud / Terraform | 値は Terraform 管理外 |
+| Secret 値の追加・更新 | gcloud（運用者） | 値を tfstate に残さない。CI（deployer SA）は Secret の権限を持たない（8.9）|
 
 Cloud Run service の `template[0].containers[0].image` は Terraform の `lifecycle.ignore_changes` で除外 → デプロイで CI が上書きしても Terraform plan に差分が出ない。
 
@@ -361,7 +380,7 @@ Cloud Run service の `template[0].containers[0].image` は Terraform の `lifec
 | **合計** | **~$10〜13** | |
 
 上の表は GCP の費用だけ。Claude API（Tier 3 の AI 判定）は別請求で、AI に送る行数に比例する。
-アプリ側の上限（1 日 全体 2,000 行。8.7）で、1 日あたり概算 $2〜5 が上限になる（見積もりの根拠は ADR-0004「利用量の上限」）。
+アプリ側の上限（1 日 全体 2,000 行。8.8）で、1 日あたり概算 $2〜5 が上限になる（見積もりの根拠は ADR-0004「利用量の上限」）。
 
 **初回特典**: 新規 GCP ユーザーには $300 / 90日 の無料クレジット → 最初の 2〜3 ヶ月は実質無料
 
@@ -393,9 +412,22 @@ gcloud storage buckets create gs://subma-tfstate \
   --location=asia-northeast1 \
   --uniform-bucket-level-access
 
-# 3. Terraform 実行
+# 3. Terraform 実行（Secret の器 → 値の投入 → 残りの順。詳細は 8.9）
 cd infra/terraform
 terraform init -backend-config="bucket=subma-tfstate" -backend-config="prefix=prod"
+
+# 3-1. Secret の器と accessor 権限だけ先に作る
+#      （cloud-sql-app-password の版は Terraform が作るので、ここで一緒に作る）
+terraform apply \
+  -target=google_secret_manager_secret.subma \
+  -target=google_secret_manager_secret_iam_member.cloud_run_accessor \
+  -target=google_secret_manager_secret_version.cloud_sql_app_password \
+  -target=google_secret_manager_secret.allowed_login_emails \
+  -target=google_secret_manager_secret_iam_member.allowed_login_emails_accessor
+
+# 3-2. 値を投入（8.9 / 8.5）。Cloud Run は版が 1 つも無い Secret を参照するとリビジョンを起動できない
+
+# 3-3. 残りを作る
 terraform plan -out=plan.out
 terraform apply plan.out
 
@@ -418,7 +450,7 @@ git push origin main  # → GitHub Actions が deploy.yml を実行
 | インフラ変更 | `terraform plan` → review → `terraform apply` |
 | Cloud Run ログ | `gcloud run services logs read subma-web --region=asia-northeast1` |
 | DB 接続（手元から） | `gcloud sql connect subma-prod --user=subma_app --database=subma_production` |
-| Secret 値の更新 | `gcloud secrets versions add anthropic-api-key --data-file=- < new_key.txt` |
+| Secret 値の更新 | 8.9 の手順（`gcloud secrets versions add` → 新リビジョン作成 → 古い版を無効化）|
 
 ### 8.3 課金停止（一時的にコストゼロにする）
 
@@ -446,7 +478,7 @@ terraform destroy -auto-approve
 | 500 エラー | Cloud Logging（lograge JSON 検索）|
 | DB 接続エラー | Cloud SQL ダッシュボード / `gcloud sql instances describe` |
 | デプロイ失敗 | GitHub Actions の Job log |
-| CSV 取り込みが「失敗」のまま／処理中のまま止まった | Cloud Logging で `[ProcessCsvJob]` を検索。原因を直したら 8.6 の手順で再処理 |
+| CSV 取り込みが「失敗」のまま／処理中のまま止まった | Cloud Logging で `[ProcessCsvJob]` を検索。原因を直したら 8.7 の手順で再処理 |
 
 ### 8.5 ログイン許可リストの運用（ADR-0006）
 
@@ -454,6 +486,8 @@ terraform destroy -auto-approve
 Terraform は Secret `allowed-login-emails` の器と、Cloud Run SA の accessor 権限だけを作る。
 
 **初回導入（Terraform 変更の apply 前後）**
+
+他の Secret と同じ方式（8.9）。ここでは許可リストだけを後から追加したときの手順を残す。
 
 Cloud Run は `version = "latest"` の Secret にバージョンが 1 つも無いとリビジョンを起動できない。
 そのため、Secret の器を先に作り、値を投入してから全体を apply する。
@@ -510,7 +544,7 @@ gcloud secrets versions disable <VERSION> --secret=allowed-login-emails
    - API の制限: Identity Toolkit API と Token Service API（Secure Token）だけに絞る
 4. 設定後、許可リストに入っているアカウントでログインでき、入っていないアカウントでは「このサービスは招待制です」が表示されることを本番で確認する
 
-### 8.6 CSV 取り込みの再処理（ADR-0007）
+### 8.7 CSV 取り込みの再処理（ADR-0007）
 
 `failed` の import と、処理中のまま 30 分以上更新がない import は再処理できる。アップロードファイルは `completed` になったときだけ削除するので、失敗した import はファイルが残っている。ただし、保存先バケットのライフサイクル（1 日）を過ぎるとファイルが消えるため、その場合は再アップロードしてもらう。
 
@@ -523,7 +557,7 @@ bin/rails 'csv_imports:retry[<csv_import_id>]'
 
 どちらも status を `uploading` に戻してから `CsvProcessingDispatcher` で登録する。同じユーザーの別の import が処理中なら登録を見送り、その処理が終わったときに古い順に自動で登録される。
 
-### 8.7 AI 利用量の上限と外側の安全網（M-7）
+### 8.8 AI 利用量の上限と外側の安全網（M-7）
 
 アプリ側では、AI（Claude API）に送る行数に上限を設けている（ADR-0004「利用量の上限」）。
 上限はすべて Cloud Run の環境変数で変えられる。未設定なら既定値で動く。
@@ -551,6 +585,54 @@ bin/rails 'csv_imports:retry[<csv_import_id>]'
    - Google Cloud コンソール → お支払い → 予算とアラート で、このプロジェクトの予算を作る
    - 金額は 7.1 の月額目安に少し余裕を持たせた値。しきい値は 50%・90%・100%（実績）で通知する
    - 予算アラートは通知だけで課金は止まらない。止める必要があるときは 8.3（課金停止）の手順を使う
+
+### 8.9 Secret の値の投入・更新
+
+Terraform は Secret の器と Cloud Run SA の accessor 権限だけを作る（3.3）。
+`rails-master-key` / `anthropic-api-key` / `firebase-web-api-key` / `allowed-login-emails` の値は、運用者が `gcloud` で投入する。
+`cloud-sql-app-password` だけは Terraform が生成・投入するので手作業は不要。
+
+**値の投入（初回・更新共通）**
+
+シェル履歴に値を残さないよう、標準入力から渡す（`--data-file=-`）。`printf '%s'` で末尾に改行を付けない。
+
+```bash
+# 例: 値を貼り付けて Enter（入力は画面に出ない）
+read -rs VALUE && printf '%s' "$VALUE" | gcloud secrets versions add anthropic-api-key --data-file=- ; unset VALUE
+
+# rails-master-key は手元の config/master.key から
+printf '%s' "$(cat config/master.key)" | gcloud secrets versions add rails-master-key --data-file=-
+```
+
+**初回構築（8.1 の手順 3）**
+
+1. `terraform apply -target=...` で Secret の器と accessor 権限だけ先に作る（8.1 の 3-1）
+2. 上の手順で各 Secret に値を 1 つずつ投入する（許可メールは 8.5）
+3. `gcloud secrets versions list <name>` で、各 Secret に `enabled` の版があることを確認する
+4. 残りを `terraform apply`（Cloud Run service / job が作られ、`latest` の版を読む）
+
+**値の更新（ローテーション）**
+
+```bash
+# 1. 新しい版を追加
+read -rs VALUE && printf '%s' "$VALUE" | gcloud secrets versions add anthropic-api-key --data-file=- ; unset VALUE
+
+# 2. Cloud Run は "latest" をリビジョン起動時に読むので、新しいリビジョンを作って反映する
+gcloud run services update subma-web --region=asia-northeast1 \
+  --update-labels=secret-rev=$(date +%Y%m%d%H%M%S)
+#    （マイグレーション Job は実行のたびに latest を読むので操作不要）
+
+# 3. 新リビジョンで動作確認できたら、古い版を無効化（漏洩時は確認後すぐ）
+gcloud secrets versions list anthropic-api-key
+gcloud secrets versions disable <VERSION> --secret=anthropic-api-key
+```
+
+Terraform はこれらの版を管理しないので、`terraform apply` で無効化した版が有効に戻ることはない。
+
+**注意**
+
+- tfvars に `rails_master_key` / `anthropic_api_key` / `firebase_web_api_key` を書かない（変数は削除済み。残っていると plan で「undeclared variable」の警告が出る）
+- `deploy.yml`（deployer SA）は Secret の権限を持たないので、CI から値を入れ替えることはできない。値の更新は必ず運用者が行う
 
 ---
 

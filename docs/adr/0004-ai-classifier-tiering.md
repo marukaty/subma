@@ -150,7 +150,7 @@ Tier 3 は呼ぶたびに課金されるため、悪意のある大きな CSV �
 
 上限なし（以前）は 1 回の取り込みで約 3 万行（5MB）を送れたため、上限で 1 日の最大額を数ドルに抑えられる。
 1 か月で上限まで使い切る状態は想定外のため、外側の安全網として Anthropic コンソールの月額上限（例: $30）と
-GCP の予算アラートを設定する（手順は `docs/infrastructure-notes.md` 8.7）。
+GCP の予算アラートを設定する（手順は `docs/infrastructure-notes.md` 8.8）。
 
 #### 既定値の根拠
 - CSV 1,000 行: カード明細 1 か月分は多くても数百行。1MB のサイズ上限（約 2 万行入る）より先に、行数で止める
@@ -183,7 +183,7 @@ parse → Tier 1 → Tier 2 → Tier 3 → save_transactions → purge_csv_file 
 
 ### フォローアップ
 - Phase 4: Cloud Tasks への移行検討（ADR-0003 と統合判断）
-- Phase 5: Anthropic Console での月予算アラート設定（手順は `docs/infrastructure-notes.md` 8.7。アプリ側の上限は「利用量の上限」節）
+- Phase 5: Anthropic Console での月予算アラート設定（手順は `docs/infrastructure-notes.md` 8.8。アプリ側の上限は「利用量の上限」節）
 - 学習データ蓄積: ユーザーがレビュー時に AI 判定を修正したケースを匿名化保存して将来の Tier 1 パターン強化に活かす（v2 以降）
 
 ## 参考
