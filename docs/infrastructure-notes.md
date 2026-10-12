@@ -196,8 +196,12 @@ GCP API 呼び出し
 
 | バケット | 用途 | 特殊設定 |
 |---|---|---|
-| `<PROJECT_ID>-subma-csv-temp` | CSV 一時保管 | **lifecycle: 1日で削除**（PII 永続化防止 / NFR-S-09）|
+| `<PROJECT_ID>-subma-csv-temp` | CSV 一時保管（本番の Active Storage `google` サービスの保存先） | **lifecycle: 1日で削除**（PII 永続化防止 / NFR-S-09）|
 | `subma-tfstate` | Terraform state | バージョニング有効 |
+
+- 本番の Active Storage は `config/storage.yml` の `google`（`service: GCS`）を使う。バケット名は環境変数 `CSV_TEMP_BUCKET`、プロジェクトは `GCP_PROJECT_ID`（どちらも `cloud_run.tf` で設定済み）
+- 認証は Cloud Run のランタイム SA（ADC）。鍵ファイルは作らない
+- development / test はローカルディスク（`local` / `test`）のまま
 
 ### 3.7 その他
 
