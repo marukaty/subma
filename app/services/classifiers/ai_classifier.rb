@@ -15,12 +15,27 @@ module Classifiers
   # - system プロンプトに cache_control: ephemeral を付け、同一ユーザーの連続インポートで使い回し
   # - Tier 1/2 で高確度のものを除外してから Tier 3 に流す（呼び出し側の責務）
   # - 最大 BATCH_SIZE 件 / リクエスト
+  # - 同じ取り込みの中で「店名（正規化後）＋金額」が同じ行は 1 回だけ送り、結果を全行に当てる（M-7）
+  #   日付はキーに含めない（毎月の同額請求が 1 回にまとまる）。金額をキーに含める理由は
+  #   ADR-0004「利用量の上限」を参照（AMAZON.CO.JP のような汎用の店名は金額で判定が変わる）
+  #
+  # 利用量の上限（M-7）:
+  # - classify に limiter（AiUsageLimiter）を渡すと、まとめた後の行数で上限を予約し、
+  #   上限を超えた分は送らずに unknown として返す（Result#skipped_count に元の行数で記録）
   #
   # フォールバック:
   # - レート制限・サーバー過負荷時は指数バックオフ（最大 MAX_RETRIES 回）
   # - JSON パース失敗 / API 失敗時はその行を unclassified として返す（unknown 扱いで保存される）
   class AiClassifier
-    Result = Struct.new(:classified, :unclassified, keyword_init: true)
+    # skipped_count: 利用量の上限で AI に送らなかった行数（まとめる前の元の行数）
+    Result = Struct.new(:classified, :unclassified, :skipped_count, keyword_init: true) do
+      def initialize(classified:, unclassified:, skipped_count: 0)
+        super
+      end
+    end
+
+    # 代表行の判定結果を、同じキーの他の行に写すときの項目
+    VERDICT_KEYS = %i[classification classifier confidence inferred_service_name inferred_category].freeze
 
     MODEL = :"claude-sonnet-4-6"
     BATCH_SIZE = 50
@@ -57,38 +72,64 @@ module Classifiers
       @client = client
     end
 
+    # 同じ判定になる行をまとめるキー: AI に送る内容（マスク後の店名と金額）から日付を除いたもの。
+    # 店名は NFKC 正規化・大文字小文字の無視・空白の詰めをしてから比べる（Tier 1 と同じ正規化。ADR-0008）
+    def self.dedup_key(row)
+      description = ServiceTemplate.normalize_for_match(mask_pii(row[:description])).downcase.squish
+      amount = BigDecimal(row[:amount].to_s, exception: false) || row[:amount].to_s
+      [ description, amount ]
+    end
+
+    # NFR-S-10: 連続 4 桁以上の数字を XXXX に置換
+    def self.mask_pii(description)
+      description.to_s.gsub(/\d{4,}/, "XXXX")
+    end
+
     # @param rows [Array<Hash>] [{ date:, description:, amount: }, ...]
+    # @param limiter [#reserve, nil] AI に送る行数の上限（AiUsageLimiter）。nil なら上限なし
     # @return [Result]
-    def classify(rows)
+    def classify(rows, limiter: nil)
       return Result.new(classified: [], unclassified: []) if rows.blank?
+
+      # 同じキーの行は先頭の 1 行（代表）だけを送る。group_by は最初に出てきた順を保つ
+      groups = rows.group_by { |row| self.class.dedup_key(row) }.values
+      allowed = limiter ? limiter.reserve(groups.size) : groups.size
+      sent_groups = groups.first(allowed)
+      skipped_groups = groups.drop(allowed)
+
+      verdicts = classify_representatives(sent_groups.map(&:first))
 
       classified = []
       unclassified = []
-
-      # API 応答を入力行と紐付けるため一時的な id を振る
-      indexed = rows.each_with_index.map { |row, i| row.merge(_ai_id: i) }
-
-      indexed.each_slice(BATCH_SIZE) do |batch|
-        ai_results = call_with_retry(batch)
-        merged = merge_results(batch, ai_results)
-        merged.each do |row|
-          row_clean = row.except(:_ai_id)
-          if row_clean[:classification].present? && row_clean[:classification] != "unknown"
-            classified << row_clean
+      sent_groups.zip(verdicts).each do |members, verdict|
+        known = verdict[:classification].present? && verdict[:classification] != "unknown"
+        members.each do |row|
+          if known
+            classified << row.merge(verdict.slice(*VERDICT_KEYS))
           else
-            unclassified << row_clean
+            unclassified << row.merge(classification: "unknown")
           end
         end
       end
+      skipped_groups.flatten(1).each { |row| unclassified << row.merge(classification: "unknown") }
 
-      Result.new(classified: classified, unclassified: unclassified)
+      Result.new(classified: classified, unclassified: unclassified, skipped_count: skipped_groups.sum(&:size))
     end
 
     private
 
-    # NFR-S-10: 連続 4 桁以上の数字を XXXX に置換
+    # 代表行を BATCH_SIZE 件ずつ送り、入力と同じ順に判定結果（行に結果を足したもの）を返す
+    def classify_representatives(representatives)
+      # API 応答を入力行と紐付けるため一時的な id を振る
+      indexed = representatives.each_with_index.map { |row, i| row.merge(_ai_id: i) }
+
+      indexed.each_slice(BATCH_SIZE).flat_map do |batch|
+        merge_results(batch, call_with_retry(batch)).map { |row| row.except(:_ai_id) }
+      end
+    end
+
     def mask_pii(description)
-      description.to_s.gsub(/\d{4,}/, "XXXX")
+      self.class.mask_pii(description)
     end
 
     def call_with_retry(batch)

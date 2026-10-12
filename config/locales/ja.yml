@@ -18,6 +18,7 @@ ja:
               invalid_content_type: "CSV ファイルとして認識できない形式です（対応: text/csv・text/plain・application/vnd.ms-excel）"
               empty: "ファイルが空です"
               too_large: "ファイルサイズは %{max_size} までです"
+              too_many_rows: "取引の行数は %{max_rows} 行までです。期間を分けて CSV をダウンロードし、複数回に分けて取り込んでください"
               not_csv: "ファイルの中身が CSV ではありません"
               invalid_encoding: "文字コードを読み取れません（UTF-8 または Shift_JIS の CSV に対応しています）"
               malformed_csv: "CSV として読み取れません。カード会社からダウンロードした CSV をそのまま選択してください"

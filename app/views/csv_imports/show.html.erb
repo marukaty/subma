@@ -58,6 +58,11 @@
         既に取り込み済みの取引 <%= @csv_import.skipped_duplicate_count %> 件はスキップしました（同じ日付・利用店名・金額の取引が、以前の取り込みで保存されています）。
       </p>
     <% end %>
+    <% if @csv_import.status_completed? && @csv_import.ai_skipped_count.positive? %>
+      <p class="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-3" data-testid="csv-import-ai-skipped">
+        AI 判定の上限に達したため <%= @csv_import.ai_skipped_count %> 行は未判定です（AI に送る行数には、取り込み 1 回・1 日あたりの上限があります）。
+      </p>
+    <% end %>
     <% if waiting %>
       <p class="text-xs text-gray-400 mt-3">
         ⏳ 処理中です。このページは自動更新されます…
