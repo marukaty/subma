@@ -31,8 +31,9 @@ module Classifiers
       あなたはクレジットカード取引明細を分析する専門家です。各取引について、サブスクリプション課金（定期支払い）かどうかを判定してください。
 
       判定基準:
-      - サブスクリプション (is_subscription: true): 月額・年額の定額制サービス（動画配信 Netflix/Spotify、SaaS Adobe/Microsoft 365、AI ChatGPT Plus/Claude Pro、クラウドストレージ iCloud/Dropbox、通信キャリア、ジム会費、新聞・雑誌購読 等）
+      - サブスクリプション (is_subscription: true): 月額・年額の定額制サービス（動画配信 Netflix/Spotify、SaaS Adobe/Microsoft 365、AI ChatGPT Plus/Claude Pro、クラウドストレージ iCloud/Dropbox、ジム会費、新聞・雑誌購読 等）
       - サブスクリプションではない (is_subscription: false): 単発購入、コンビニ・小売・飲食、ガソリン、現金引き出し、振込、税金、医療費、交通費
+      - 通信費（携帯電話・格安SIM・光回線・インターネットプロバイダの月額料金）は定額でもサブスクリプションとして扱わず、is_subscription: false とする（意図して払っている固定費のため、本アプリの可視化対象外）
 
       推定が難しい場合は confidence を 0.5 以下にして is_subscription は最も可能性の高い方を返す。
 
@@ -45,7 +46,7 @@ module Classifiers
             "is_subscription": true | false,
             "confidence": <0.0〜1.0 の小数>,
             "service_name": "推定サービス名" | null,
-            "category": "エンタメ" | "仕事" | "学習" | "ストレージ" | "通信" | "健康" | "生活" | "その他" | null
+            "category": "エンタメ" | "仕事" | "学習" | "ストレージ" | "健康" | "生活" | "その他" | null
           }
         ]
       }
