@@ -34,6 +34,25 @@ RSpec.describe Classifiers::RuleClassifier do
       expect(result.unclassified.first[:description]).to eq("ENEOS XXX")
     end
 
+    it "半角カナ・全角英字の店名も正規化して一致させる" do
+      kana_rows = [
+        { date: Date.new(2026, 4, 1), description: "ﾈｯﾄﾌﾘｯｸｽ", amount: BigDecimal("1490") },
+        { date: Date.new(2026, 4, 2), description: "ＮＥＴＦＬＩＸ", amount: BigDecimal("1490") }
+      ]
+      result = described_class.new(templates: [ netflix_template ]).classify(kana_rows)
+      expect(result.classified.size).to eq(2)
+      expect(result.unclassified).to be_empty
+    end
+
+    it "複数のテンプレートに一致する場合は先頭（id 昇順）のものを採用する" do
+      specific = ServiceTemplate.create!(service_name: "TestAppleMusic", default_billing_cycle: :monthly, match_patterns: [ "APPLE.*MUSIC" ])
+      generic = ServiceTemplate.create!(service_name: "TestAppleGeneric", default_billing_cycle: :monthly, match_patterns: [ "APPLE\\.COM/BILL" ])
+      row = { date: Date.new(2026, 4, 1), description: "APPLE.COM/BILL MUSIC", amount: BigDecimal("1080") }
+
+      result = described_class.new(templates: ServiceTemplate.where(id: [ generic.id, specific.id ]).order(:id).to_a).classify([ row ])
+      expect(result.classified.first[:inferred_service_name]).to eq("TestAppleMusic")
+    end
+
     it "returns empty classified when templates is empty" do
       result = described_class.new(templates: []).classify(rows)
       expect(result.classified).to be_empty
