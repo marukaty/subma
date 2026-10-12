@@ -11,7 +11,7 @@ module Csv
     #   - 利用店名・商品名 → description
     #   - 利用金額 → amount
     #
-    # 文字コードは UTF-8（BOM 付き）または Shift_JIS。どちらも BaseAdapter#decode_to_utf8 で自動判定する。
+    # 文字コードは UTF-8（BOM 付き）または Shift_JIS 系。どちらも Csv::TextDecoder で自動判定する（Shift_JIS 系は Windows-31J として読む）。
     #
     # 利用日が空で「利用店名・商品名」だけが入った継続行（海外利用の換算レート、ETC の経路など）は
     # 明細ではないため、parse_row が nil を返してスキップする。

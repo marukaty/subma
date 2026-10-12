@@ -164,8 +164,7 @@ class CsvUploadForm
   # 行数を数えるための変換。先頭の検証で文字コードは確認済みなので、
   # 途中に読めないバイトがあっても置き換えて数える（取り込み時の BaseAdapter と同じ扱い）
   def decode_all(bytes)
-    decode(bytes) ||
-      bytes.dup.force_encoding(Encoding::Windows_31J).encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+    Csv::TextDecoder.decode(bytes)
   end
 
   def read_head
@@ -188,14 +187,10 @@ class CsvUploadForm
     !ALLOWED_DETECTED_TYPES.include?(detected)
   end
 
-  # Csv::Adapters::BaseAdapter と同じく UTF-8 を優先し、だめなら Shift_JIS 系として読む。
-  # 検証では Shift_JIS の上位互換である Windows-31J（機種依存文字を含む）で正しく読めることを確認する
+  # 取り込み時（Csv::Adapters::BaseAdapter）と同じ判定で読む（UTF-8 を優先し、だめなら Windows-31J）。
+  # 検証では、どちらかの文字コードとして正しく読めることを確認する
   def decode(bytes)
-    utf8 = bytes.dup.force_encoding(Encoding::UTF_8)
-    return utf8.delete_prefix("﻿") if utf8.valid_encoding?
-
-    sjis = bytes.dup.force_encoding(Encoding::Windows_31J)
-    sjis.valid_encoding? ? sjis.encode(Encoding::UTF_8) : nil
+    Csv::TextDecoder.decode(bytes, strict: true)
   end
 
   def parse_preview(text)

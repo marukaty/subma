@@ -40,6 +40,30 @@ RSpec.describe Csv::Parser do
       )
     end
 
+    context "with Windows-31J（Windows で作られた Shift_JIS 系）の機種依存文字" do
+      let(:content) do
+        [
+          %("利用日","利用店名・商品名","利用金額"),
+          %("2026/04/01","㈱サンプル①","1490"),
+          %("2026/04/02","髙島屋","500")
+        ].join("\n").encode(Encoding::Windows_31J)
+      end
+
+      it "アップロード時の検証を通り、取り込みでも化けずに読む" do
+        upload = Rack::Test::UploadedFile.new(StringIO.new(content.b), "text/csv", true, original_filename: "w31j.csv")
+        expect(CsvUploadForm.new(file: upload, format: "rakuten")).to be_valid
+
+        Tempfile.create([ "w31j", ".csv" ]) do |f|
+          f.binmode
+          f.write(content.b)
+          f.flush
+
+          rows = described_class.new(file_path: f.path, format: "rakuten").parse
+          expect(rows.map { |r| r[:description] }).to eq([ "㈱サンプル①", "髙島屋" ])
+        end
+      end
+    end
+
     context "with UTF-8 BOM (楽天 e-navi のダウンロード形式)" do
       it "fixture starts with the UTF-8 BOM bytes" do
         expect(File.binread(bom_path, 3).bytes).to eq([ 0xEF, 0xBB, 0xBF ])
