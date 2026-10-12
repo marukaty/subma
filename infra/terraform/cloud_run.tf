@@ -205,8 +205,15 @@ resource "google_cloud_run_v2_service" "web" {
       }
     }
 
-    # 起動タイムアウト（Rails boot に余裕）
-    timeout = "60s"
+    # リクエストタイムアウト。CSV 取り込みは Cloud Tasks → /internal/jobs/process_csv で
+    # 同期実行するため、AI 判定を含めて最後まで終わる長さにする（ADR-0007）。
+    # Cloud Tasks のタスク側 dispatch_deadline（CsvProcessingDispatcher、900 秒）と同じ値にそろえる。
+    timeout = "900s"
+
+    # 1 インスタンスが同時に受け付けるリクエスト数。既定の 80 だと Puma（3 スレッド）の前で
+    # リクエストが詰まるだけでインスタンスが増えない。CSV 取り込みは 1 件で最長 15 分スレッドを
+    # 占有するため、Puma のスレッド数と同じにして、空きがなければ別インスタンスに振り分けさせる。
+    max_instance_request_concurrency = 3
   }
 
   traffic {

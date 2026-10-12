@@ -5,7 +5,9 @@
 #   - Authorization: Bearer <id_token> を OidcVerifier で検証
 #     （aud = CLOUD_TASKS_TARGET_URL、発行元 email = CLOUD_TASKS_SA_EMAIL）
 #   - 検証が通れば ProcessCsvJob を **同期実行**（Sidekiq を経由しない、Cloud Run プロセス内）
-#   - Cloud Tasks のタイムアウト・リトライ機構に処理時間とエラー処理を任せる
+#   - Cloud Tasks のタイムアウト・リトライ機構に処理時間と配送の失敗を任せる
+#   - 処理済み・処理中・失敗済みの import はジョブ側で何もせず 200 を返す（ADR-0007）。
+#     Cloud Tasks の再送（at-least-once 配信）で同じ import を二重に処理しないため
 #
 # セキュリティ:
 #   - CSRF 検証はスキップ（Cloud Tasks は CSRF トークンを送れない）
@@ -30,9 +32,9 @@ module Internal
       end
 
       # Cloud Tasks から呼ばれた場合は同期実行（Cloud Tasks がタイムアウト管理）
-      ProcessCsvJob.new.perform(csv_import_id.to_i)
+      result = ProcessCsvJob.new.perform(csv_import_id.to_i)
 
-      render json: { ok: true, csv_import_id: csv_import_id.to_i }
+      render json: { ok: true, csv_import_id: csv_import_id.to_i, result: result }
     end
 
     private

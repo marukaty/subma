@@ -27,6 +27,8 @@ Rails.application.routes.draw do
     member do
       post :register  # PR-C: 抽出結果レビュー → Subscription 一括登録
     end
+    # 失敗した取り込みの再処理（ADR-0007）
+    resource :retry, only: [ :create ], module: :csv_imports
   end
 
   # 設定
