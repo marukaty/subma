@@ -9,7 +9,7 @@
 #
 # 方針: Terraform は Secret の「器」と Cloud Run SA の accessor 権限だけを管理し、
 # 外部から持ち込む値（API キー等）は Terraform の変数・tfvars・tfstate に入れない。
-# 値は運用者が gcloud で帯域外に投入する（手順: docs/infrastructure-notes.md 8.7）:
+# 値は運用者が gcloud で帯域外に投入する（手順: docs/infrastructure-notes.md 8.9）:
 #
 #   gcloud secrets versions add anthropic-api-key --data-file=-
 #

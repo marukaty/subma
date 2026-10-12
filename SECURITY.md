@@ -36,7 +36,7 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
 | NFR-S-04 | secure_headers で CSP / HSTS / X-Frame-Options | ✅（CSP は Phase 1 緩め、Phase 5 厳密化） | `config/initializers/secure_headers.rb` |
 | NFR-S-05 | 監査ログを全書き込み操作で記録 | ✅ | `ApplicationController#record_audit_log` + `AuditLog` モデル |
 | NFR-S-06 | Firestore セキュリティルール | 未（Phase 3） | `firestore.rules` |
-| NFR-S-07 | Secret Manager で API/DB 認証情報管理 | 未（Phase 4 本番化時） | Cloud Run env vars + Secret Manager |
+| NFR-S-07 | Secret Manager で API/DB 認証情報管理 | ✅ | `infra/terraform/secret_manager.tf`（器と accessor のみ Terraform、値は gcloud で投入）|
 | NFR-S-08 | AI_USAGE_GUIDELINE.md | ✅ | `AI_USAGE_GUIDELINE.md` |
 | NFR-S-09 | CSV ファイルは処理後即削除 | 未（Phase 3） | `ProcessCsvJob` 実装時 |
 | NFR-S-10 | Claude API 送信時に識別子除外・PII マスク | 未（Phase 3） | `AiClassifier#mask_pii` |
@@ -89,6 +89,16 @@ SubMa は個人のクレジットカード明細 CSV を扱う性質上、PII（
   - 全書き込み操作: `<controller>.<action>` 形式（例: `subscriptions.create`）
   - 関連: user_id（認証前は null）/ resource_type / resource_id / ip_address / user_agent / created_at
 - 保存期間: 90 日（Phase 4 で TTL ジョブ実装予定）
+
+## インフラの秘密値と権限
+
+- **秘密値は tfstate に入れない**: Terraform は Secret Manager の Secret の器と、Cloud Run 実行 SA（`subma-run`）の accessor 権限だけを管理する。API キー・Rails master key・許可メールは Terraform の変数・tfvars に持たず、運用者が `gcloud secrets versions add` で投入する（手順: [docs/infrastructure-notes.md](./docs/infrastructure-notes.md) 8.9）
+  - Terraform が版を管理しないので、漏洩時やローテーション時に手動で無効化した版が `terraform apply` で有効に戻ることはない
+  - 例外: Cloud SQL のアプリ用パスワードは Terraform が `random_password` で生成し、DB ユーザーと Secret の両方に設定する（値の出どころが Terraform 自身のため）。tfstate の GCS バケットは閲覧権限を絞って扱う
+- **デプロイ SA は最小権限**: GitHub Actions（WIF 経由）が使う `subma-deployer` は、`deploy.yml` の操作に必要な権限だけを持つ
+  - `roles/run.developer`（service / job の更新と実行）、`roles/artifactregistry.writer`（リポジトリ `subma` のみ）、`roles/iam.serviceAccountUser`（実行 SA `subma-run` のみ）
+  - Cloud SQL・Secret Manager・Cloud Storage の権限と、Cloud Run の IAM ポリシー変更権限（`run.admin`）は持たない。CI の認証情報が悪用されても、DB・秘密値・バケットには直接届かない
+  - 対応表: [docs/infrastructure-notes.md](./docs/infrastructure-notes.md) 3.4
 
 ## 脆弱性報告
 

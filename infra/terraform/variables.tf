@@ -4,7 +4,7 @@
 # 機密値は本ファイルや tfvars に入れない:
 #   - DB パスワード: Terraform が random_password で自動生成 → Secret Manager に格納
 #   - API キー等の外部の秘密値: Secret の器だけ Terraform で作り、値は gcloud で投入
-#     （secret_manager.tf / docs/infrastructure-notes.md 8.7）
+#     （secret_manager.tf / docs/infrastructure-notes.md 8.9）
 #
 # [ai-assisted]
 

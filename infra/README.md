@@ -124,7 +124,7 @@ terraform apply \
   -target=google_secret_manager_secret.allowed_login_emails \
   -target=google_secret_manager_secret_iam_member.allowed_login_emails_accessor
 
-# 5-2. 秘密値を投入（手順: docs/infrastructure-notes.md 8.7。許可メールは 8.5）
+# 5-2. 秘密値を投入（手順: docs/infrastructure-notes.md 8.9。許可メールは 8.5）
 #      rails-master-key / anthropic-api-key / firebase-web-api-key / allowed-login-emails
 
 # 5-3. 残りを作る
