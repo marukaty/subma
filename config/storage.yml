@@ -14,12 +14,15 @@ local:
 #   region: us-east-1
 #   bucket: your_own_bucket-<%= Rails.env %>
 
-# Remember not to checkin your GCS keyfile to a repository
-# google:
-#   service: GCS
-#   project: your_project
-#   credentials: <%= Rails.root.join("path/to/gcs.keyfile") %>
-#   bucket: your_own_bucket-<%= Rails.env %>
+# 本番（Cloud Run）の保存先。CSV 一時保管用バケット（infra/terraform/cloud_storage.tf）を使う。
+# Cloud Run はインスタンスが複数になり得るため、ローカルディスクでは受信したインスタンスと
+# 処理するインスタンスが別になると読めない。
+# 認証は Cloud Run のランタイム SA（Application Default Credentials）に任せるので、
+# credentials（鍵ファイル）は書かない。バケット単位の roles/storage.objectAdmin を付与済み。
+google:
+  service: GCS
+  project: <%= ENV["GCP_PROJECT_ID"] %>
+  bucket: <%= ENV["CSV_TEMP_BUCKET"] %>
 
 # mirror:
 #   service: Mirror

@@ -6,7 +6,7 @@
 #   - パブリックアクセス禁止
 #   - Cloud Run SA のみが読み書きできる
 #
-# Active Storage の bucket としても利用可能。本番では config/storage.yml を Cloud Storage 設定に差し替える。
+# 本番の Active Storage の保存先（config/storage.yml の google。バケット名は環境変数 CSV_TEMP_BUCKET）。
 #
 # [ai-assisted]
 

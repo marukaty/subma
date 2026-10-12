@@ -71,3 +71,6 @@ gem "anthropic", "~> 1.42"
 
 # Phase 4: Cloud Tasks dispatcher（本番では Sidekiq の代わりに HTTP push で job を実行）
 gem "google-cloud-tasks", "~> 3.0"
+
+# 本番の Active Storage 保存先（Cloud Storage）。ActiveStorage::Service::GCSService が必要なときに require する
+gem "google-cloud-storage", "~> 1.57", require: false
