@@ -47,7 +47,7 @@ services:
         bin/rails tailwindcss:build &&
         bin/rails server -b 0.0.0.0
       "
-    # 他プロジェクト（gakushu等）と被らないようホストは 3010 を使う
+    # ホストの 3000 番は他のアプリと重なりやすいので 3010 を使う
     # （ブラウザは http://localhost:3010 でアクセス）
     ports:
       - "3010:3000"
