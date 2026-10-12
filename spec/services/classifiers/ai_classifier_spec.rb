@@ -80,6 +80,19 @@ RSpec.describe Classifiers::AiClassifier do
         expect(captured_system.first[:cache_control]).to eq({ type: "ephemeral" })
       end
 
+      it "system プロンプトで通信費（携帯・回線・プロバイダ）をサブスク対象外と指示している（ADR-0008）" do
+        captured_system = nil
+        allow(messages_resource).to receive(:create) do |**kwargs|
+          captured_system = kwargs[:system_]
+          fake_message(JSON.generate(results: []))
+        end
+        classifier.classify(rows)
+        prompt = captured_system.first[:text]
+        expect(prompt).to include("通信費")
+        expect(prompt).to match(/通信費.*is_subscription: false/)
+        expect(prompt).not_to include("通信キャリア")
+      end
+
       it "row 内に内部用の :_ai_id を残さない" do
         result = classifier.classify(rows)
         result.classified.each { |r| expect(r).not_to have_key(:_ai_id) }

@@ -59,6 +59,35 @@ RSpec.describe ServiceTemplate, type: :model do
     end
   end
 
+  describe "#match?（Unicode NFKC 正規化）" do
+    it "半角カナの店名が全角カナのパターンに一致する" do
+      template = described_class.create!(valid_attrs.merge(service_name: "TestService_Adobe", match_patterns: [ "ADOBE", "アドビ" ]))
+      expect(template.match?("ｱﾄﾞﾋﾞｶﾌﾞｼｷｶﾞｲｼｬ")).to be(true)
+    end
+
+    it "全角英字の店名が半角英字のパターンに一致する" do
+      expect(described_class.create!(valid_attrs).match?("ＮＥＴＦＬＩＸ")).to be(true)
+    end
+
+    it "パターン側が半角カナでも正規化して照合する" do
+      template = described_class.create!(valid_attrs.merge(service_name: "TestService_Kana", match_patterns: [ "ﾃｽﾄｻｰﾋﾞｽ" ]))
+      expect(template.match?("テストサービス月額")).to be(true)
+    end
+
+    it "nil・空文字では一致しない" do
+      template = described_class.create!(valid_attrs)
+      expect(template.match?(nil)).to be(false)
+      expect(template.match?("")).to be(false)
+    end
+
+    it "match_patterns を変更すると照合結果も追従する" do
+      template = described_class.create!(valid_attrs)
+      expect(template.match?("HULU")).to be(false)
+      template.match_patterns = [ "HULU" ]
+      expect(template.match?("HULU")).to be(true)
+    end
+  end
+
   describe "scope by_category" do
     # seed データを混ぜてカウントせず、unique なカテゴリで分離検証
     it "filters by default_category" do

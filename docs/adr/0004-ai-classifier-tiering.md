@@ -3,7 +3,7 @@
 - **ステータス**: 採択
 - **日付**: 2026-04-28
 - **決定者**: Marin Miyazaki
-- **関連 ADR**: ADR-0003（CSV パイプライン）、ADR-0005（CSV PII 保護）
+- **関連 ADR**: ADR-0003（CSV パイプライン）、ADR-0005（CSV PII 保護）、ADR-0008（通信費の除外・店名の正規化）
 
 ## 背景
 
@@ -50,6 +50,8 @@ CSV 取り込みからサブスクを自動抽出するうえで、以下を同�
 - ヒット → confidence 1.0 で確定、subscription として `classified` バケットへ
 - ヒットしない → そのまま `unclassified` を返し、Tier 2 へ流す
 - 計算量: O(rows × templates)、ServiceTemplate は起動時にメモリキャッシュ
+- 照合前に description とパターンの両方を Unicode NFKC で正規化する（半角カナ・全角英数の店名対応。ADR-0008）
+- 通信費（携帯・回線・プロバイダの月額）はテンプレートを置かず、サブスクの対象外とする（ADR-0008）
 
 ### Tier 2: `Classifiers::PatternClassifier`
 - 入力: Tier 1 で `unclassified` だった行

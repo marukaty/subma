@@ -5,10 +5,16 @@ module Classifiers
   # マッチしないものは unclassified として返す（後段の Tier 2/3 で処理）。
   #
   # ServiceTemplate を毎回ロードするのを避けるため起動時にメモリにキャッシュする。
+  #
+  # 照合は ServiceTemplate#match? に委ね、description は NFKC 正規化してから照合する
+  # （半角カナ・全角英数の店名に対応）。
+  # 複数のテンプレートに一致し得る場合は「先に見つかったもの」を採用するため、
+  # 読み込み順を id 昇順に固定する。個別サービス（例: Apple Music）を汎用テンプレート
+  # （例: Apple（App Store/iCloud））より先に seed しておくことで、個別の方が優先される。
   class RuleClassifier
     Result = Struct.new(:classified, :unclassified, keyword_init: true)
 
-    def initialize(templates: ServiceTemplate.all.to_a)
+    def initialize(templates: ServiceTemplate.order(:id).to_a)
       @templates = templates
     end
 
