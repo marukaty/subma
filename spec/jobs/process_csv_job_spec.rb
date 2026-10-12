@@ -121,6 +121,146 @@ RSpec.describe ProcessCsvJob, type: :job do
       end
     end
 
+    describe "再取り込みの重複（ADR-0007）" do
+      def new_import(path = csv_path, filename: "again.csv")
+        ci = CsvImport.create!(user: user, filename: filename, format: :rakuten, status: :uploading)
+        ci.file.attach(io: File.open(path), filename: filename, content_type: "text/csv")
+        ci
+      end
+
+      it "同じ内容の CSV を 2 回取り込むと、2 回目は transactions が増えず全行スキップになる" do
+        described_class.new.perform(csv_import.id)
+        second = new_import
+
+        expect {
+          expect(described_class.new.perform(second.id)).to eq(:completed)
+        }.not_to change(Transaction, :count)
+
+        second.reload
+        expect(second.original_row_count).to eq(5)
+        expect(second.skipped_duplicate_count).to eq(5)
+        expect(second.matched_count).to eq(0)
+        expect(second.transactions).to be_empty
+        # 既存の取引は最初の取り込みに紐づいたまま
+        expect(csv_import.transactions.count).to eq(5)
+        expect(csv_import.reload.skipped_duplicate_count).to eq(0)
+      end
+
+      it "スキップした行は判定（AI）に渡さない" do
+        described_class.new.perform(csv_import.id)
+        second = new_import
+        ai = Classifiers::AiClassifier.new
+        allow(Classifiers::AiClassifier).to receive(:new).and_return(ai)
+        allow(ai).to receive(:classify).and_call_original
+
+        described_class.new.perform(second.id)
+
+        expect(ai).to have_received(:classify).with([])
+      end
+
+      context "同じ CSV 内に同日・同店・同額の行が 2 つある" do
+        let(:dup_csv_path) do
+          path = Rails.root.join("tmp/dedup_spec_#{SecureRandom.hex(4)}.csv")
+          File.write(path, <<~CSV)
+            "利用日","利用店名・商品名","利用者","支払方法","利用金額","支払手数料","支払総額"
+            "2026/04/20","SAMPLE CAFE","本人","1回払い","500","0","500"
+            "2026/04/20","SAMPLE CAFE","本人","1回払い","500","0","500"
+            "2026/04/21","SAMPLE STORE","本人","1回払い","800","0","800"
+          CSV
+          path
+        end
+
+        after { FileUtils.rm_f(dup_csv_path) }
+
+        it "1 回目は両方保存し、2 回目は両方スキップする" do
+          first = new_import(dup_csv_path, filename: "dup1.csv")
+          described_class.new.perform(first.id)
+          expect(first.transactions.where(description: "SAMPLE CAFE").count).to eq(2)
+          expect(first.reload.skipped_duplicate_count).to eq(0)
+
+          second = new_import(dup_csv_path, filename: "dup2.csv")
+          described_class.new.perform(second.id)
+          expect(second.reload.skipped_duplicate_count).to eq(3)
+          expect(Transaction.where(user: user, description: "SAMPLE CAFE").count).to eq(2)
+        end
+
+        it "保存済みの件数を超えた分だけ保存する（以前の取り込みに 1 件 → 今回の 2 件のうち 1 件を保存）" do
+          earlier = CsvImport.create!(user: user, filename: "old.csv", format: :rakuten, status: :completed)
+          earlier.transactions.create!(user: user, transaction_date: Date.new(2026, 4, 20),
+                                       amount: 500, description: "SAMPLE CAFE")
+
+          ci = new_import(dup_csv_path, filename: "dup.csv")
+          described_class.new.perform(ci.id)
+
+          ci.reload
+          expect(ci.skipped_duplicate_count).to eq(1)
+          expect(ci.transactions.where(description: "SAMPLE CAFE").count).to eq(1)
+          expect(ci.transactions.where(description: "SAMPLE STORE").count).to eq(1)
+        end
+      end
+
+      it "日付・店名・金額のどれかが違えば別の取引として保存する" do
+        other = CsvImport.create!(user: user, filename: "old.csv", format: :rakuten, status: :completed)
+        other.transactions.create!(user: user, transaction_date: Date.new(2026, 4, 1), amount: 1500, description: "NETFLIX.COM")
+        other.transactions.create!(user: user, transaction_date: Date.new(2026, 4, 2), amount: 1490, description: "NETFLIX.COM")
+        other.transactions.create!(user: user, transaction_date: Date.new(2026, 4, 1), amount: 1490, description: "NETFLIX")
+
+        described_class.new.perform(csv_import.id)
+
+        expect(csv_import.reload.skipped_duplicate_count).to eq(0)
+        expect(csv_import.transactions.count).to eq(5)
+      end
+
+      it "他のユーザーの同じ取引は関係ない" do
+        other_user = User.create!(firebase_uid: "uid_job_dedup_other", email: "job-dedup-other@example.com")
+        other = CsvImport.create!(user: other_user, filename: "o.csv", format: :rakuten, status: :completed)
+        other.transactions.create!(user: other_user, transaction_date: Date.new(2026, 4, 1),
+                                   amount: 1490, description: "NETFLIX.COM")
+
+        described_class.new.perform(csv_import.id)
+
+        expect(csv_import.reload.skipped_duplicate_count).to eq(0)
+        expect(csv_import.transactions.count).to eq(5)
+      end
+
+      it "同じ import の再実行では自分の取引をスキップ扱いにせず作り直す" do
+        csv_import.transactions.create!(user: user, transaction_date: Date.new(2026, 4, 1),
+                                        amount: 1490, description: "NETFLIX.COM")
+
+        described_class.new.perform(csv_import.id)
+
+        expect(csv_import.reload.skipped_duplicate_count).to eq(0)
+        expect(csv_import.transactions.count).to eq(5)
+      end
+    end
+
+    describe "matched_count（サブスク判定の件数）" do
+      it "サブスクと判定された行だけを数え、AI の「サブスクではない」・未判定は含めない" do
+        ai = Classifiers::AiClassifier.new
+        allow(Classifiers::AiClassifier).to receive(:new).and_return(ai)
+        allow(ai).to receive(:classify) do |rows|
+          by_desc = rows.index_by { |row| row[:description] }
+          subscription = by_desc.slice("SPOTIFY P12345").values.map do |row|
+            row.merge(classification: "subscription", classifier: "ai", confidence: 0.9)
+          end
+          not_subscription = by_desc.slice("ENEOS XXXXX", "コンビニATM").values.map do |row|
+            row.merge(classification: "non_subscription", classifier: "ai", confidence: 0.9)
+          end
+          unknown = by_desc.except("SPOTIFY P12345", "ENEOS XXXXX", "コンビニATM").values.map do |row|
+            row.merge(classification: "unknown")
+          end
+          Classifiers::AiClassifier::Result.new(classified: subscription + not_subscription, unclassified: unknown)
+        end
+
+        described_class.new.perform(csv_import.id)
+        csv_import.reload
+
+        counts = csv_import.transactions.group(:classification).count
+        expect(counts).to include("subscription" => 2, "non_subscription" => 2, "unknown" => 1)
+        expect(csv_import.matched_count).to eq(2) # NETFLIX（規則）+ SPOTIFY（AI）
+      end
+    end
+
     describe "1 ユーザー同時 1 件" do
       let!(:running) do
         CsvImport.create!(user: user, filename: "running.csv", format: :rakuten, status: :ai_analyzing)

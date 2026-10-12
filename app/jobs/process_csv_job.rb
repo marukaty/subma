@@ -3,12 +3,12 @@
 # パイプライン:
 #   0. 処理権を取る（uploading → processing。ADR-0007）
 #   1. Active Storage の attached file を一時パスに展開
-#   2. Csv::Parser で行配列を取得
+#   2. Csv::Parser で行配列を取得し、他の取り込みで保存済みの取引を除く（再取り込みの重複防止）
 #   3. Tier 1 RuleClassifier で確定できる行を分類（confidence 1.0）
 #   4. Tier 2 PatternClassifier で候補を絞り込み（confidence 0.7）
 #   5. Tier 3 AiClassifier で残りを Claude API で判定（NFR-S-10 PII マスキング）
 #   6. Transaction レコードを作り直す（既存分を消してから保存。同じ DB トランザクション内）
-#   7. CsvImport.status を completed に
+#   7. CsvImport.status を completed に（matched_count = サブスクと判定した件数、skipped_duplicate_count）
 #   8. **completed のときだけアップロードファイルを purge**（NFR-S-09）
 #   9. 同じユーザーの待ち（uploading）があれば次を登録
 #
@@ -17,6 +17,11 @@
 #   uploading 以外（処理中・完了・失敗）の import は何もせず正常終了し、再送を止める。
 #   失敗時は status: :failed と error_summary を残し、ファイルは再処理のために残す。
 #   例外は外に出さない（failed は手動の再処理でだけ戻すため、Cloud Tasks に再送させない）。
+#
+# 再取り込みの重複（ADR-0007）:
+#   同じユーザーの「取引日・利用店名・金額」が一致する取引が、他の取り込みで既に保存されていれば
+#   新しくは保存しない（最初の取り込みに紐づけたまま）。同じ CSV の中で同じ取引が 2 行あるのは
+#   正当な 2 件なので両方保存する。件数で突き合わせ、保存済みの件数を超えた分だけ保存する。
 #
 # 戻り値: :completed / :failed / :skipped / :deferred
 class ProcessCsvJob < ApplicationJob
@@ -67,6 +72,9 @@ class ProcessCsvJob < ApplicationJob
     rows = parse_attached_file(csv_import)
     csv_import.update!(original_row_count: rows.size, status: :rule_matching)
 
+    # 保存済みの取引は判定（AI の呼び出し）の前に除く
+    rows, skipped_duplicate_count = reject_already_imported(csv_import, user, rows)
+
     # Tier 1: 規則ベース
     rule_result = Classifiers::RuleClassifier.new.classify(rows)
 
@@ -83,7 +91,13 @@ class ProcessCsvJob < ApplicationJob
 
     Transaction.transaction do
       save_transactions(csv_import, user, classified_rows, unknown_rows)
-      csv_import.update!(matched_count: classified_rows.size, status: :completed)
+      # 「サブスク判定」の件数は、サブスクと判定された取引だけを数える
+      # （AI が「サブスクではない」と判定した行・未判定の行は含めない）
+      csv_import.update!(
+        matched_count: csv_import.transactions.classification_subscription.count,
+        skipped_duplicate_count: skipped_duplicate_count,
+        status: :completed
+      )
     end
 
     purge_file(csv_import)
@@ -106,6 +120,32 @@ class ProcessCsvJob < ApplicationJob
     csv_import.file.blob.open do |tmp|
       Csv::Parser.new(file_path: tmp.path, format: csv_import.format).parse
     end
+  end
+
+  # 他の取り込みで保存済みの取引を除く。戻り値は [残す行, スキップした件数]。
+  # 同じ取引が保存済みの件数だけスキップし、それを超えた分（同じ CSV 内の正当な複数件）は残す。
+  # 自分の import の行は数えない（再実行時は save_transactions で作り直すため）。
+  # 1 ユーザーの処理は同時に 1 件（claim_processing）なので、確認から保存までの間に
+  # 同じユーザーの取引が他から増えることはない。
+  def reject_already_imported(csv_import, user, rows)
+    return [ rows, 0 ] if rows.empty?
+
+    saved_counts = Transaction.where(user: user, transaction_date: rows.map { |row| row[:date] }.uniq)
+                              .where.not(csv_import_id: csv_import.id)
+                              .pluck(:transaction_date, :description, :amount)
+                              .map { |date, description, amount| Transaction.dedup_key(date, description, amount) }
+                              .tally
+
+    skipped = 0
+    kept = rows.reject do |row|
+      key = Transaction.dedup_key(row[:date], row[:description], row[:amount])
+      next false unless saved_counts.fetch(key, 0).positive?
+
+      saved_counts[key] -= 1
+      skipped += 1
+      true
+    end
+    [ kept, skipped ]
   end
 
   # import 単位で作り直す。前回の途中結果が残っていても重複しないように、先に消してから保存する。

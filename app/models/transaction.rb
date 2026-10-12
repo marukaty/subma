@@ -29,6 +29,17 @@ class Transaction < ApplicationRecord
             numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 },
             allow_nil: true
 
+  # 同じ取引かどうかを見分けるキー（ADR-0007「再取り込みの重複」）。
+  # 同じユーザーの「取引日・利用店名・金額」が完全に一致するものを同じ取引とみなす。
+  # 金額は 1490 と 1490.0 を同じにするため BigDecimal にそろえる。
+  def self.dedup_key(date, description, amount)
+    [ date.to_date, description.to_s, BigDecimal(amount.to_s) ]
+  end
+
+  def dedup_key
+    self.class.dedup_key(transaction_date, description, amount)
+  end
+
   scope :subscription_candidates, -> { where(classification: %i[unknown subscription]) }
   scope :for_review, -> { where(classification: :subscription).order(:transaction_date, :description) }
 end

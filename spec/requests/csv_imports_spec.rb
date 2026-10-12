@@ -181,6 +181,33 @@ RSpec.describe "CsvImports", type: :request do
         expect(response.body).to include(ci.filename)
       end
 
+      it "集計の「サブスク判定」は一覧の件数と一致し、内訳とスキップ件数を表示する" do
+        ci = user.csv_imports.create!(filename: "done.csv", format: :rakuten, status: :completed,
+                                      original_row_count: 6, matched_count: 2, skipped_duplicate_count: 1)
+        { "subscription" => 2, "non_subscription" => 2, "unknown" => 1 }.each do |classification, n|
+          n.times do |i|
+            ci.transactions.create!(user: user, transaction_date: Date.new(2026, 4, i + 1), amount: 100,
+                                    description: "#{classification} #{i}", classification: classification)
+          end
+        end
+
+        get csv_import_path(ci)
+
+        body = response.body
+        expect(body).to include("サブスク判定（2 件）")
+        expect(body).to match(%r{6 件 /\s*<span class="text-blue-600">2 件</span>})
+        breakdown = Nokogiri::HTML(body).at_css('[data-testid="csv-import-breakdown"]').text.squish
+        expect(breakdown).to eq("サブスク候補 2 ・ サブスクではない 2 ・ 未判定 1 ・ スキップ 1")
+        expect(body).to include("既に取り込み済みの取引 1 件はスキップしました")
+      end
+
+      it "すべてスキップされたときは、取り込み済みである旨を表示する" do
+        ci = user.csv_imports.create!(filename: "again.csv", format: :rakuten, status: :completed,
+                                      original_row_count: 5, matched_count: 0, skipped_duplicate_count: 5)
+        get csv_import_path(ci)
+        expect(response.body).to include("新しい取引はありませんでした（すべて取り込み済みです）")
+      end
+
       it "他ユーザーのレコードは 404" do
         other = User.create!(firebase_uid: "uid_other_csv", email: "o@example.com")
         ci = other.csv_imports.create!(filename: "x.csv", format: :rakuten, status: :uploading)
