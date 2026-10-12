@@ -27,7 +27,7 @@
               {},
               class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" %>
         <p class="text-xs text-gray-500 mt-1">
-          MVP は楽天カードのみ完全対応。他社対応は順次追加予定（要件 §7.2）
+          現在は楽天カードの CSV に対応しています
         </p>
       </div>
 
@@ -60,16 +60,16 @@
         <ul id="csv-upload-requirements" class="text-xs text-gray-500 mt-2 space-y-0.5">
           <li>対応形式: 拡張子 .csv（カンマ区切り）、文字コードは UTF-8 または Shift_JIS</li>
           <li>サイズ上限: <%= CsvUploadForm.max_size_label %>、取引の行数は <%= CsvUploadForm.max_rows.to_fs(:delimited) %> 行まで</li>
-          <li>ファイルは AI 判定後に自動で削除されます（NFR-S-09）</li>
+          <li>取り込みが完了すると、アップロードしたファイルは自動で削除されます</li>
         </ul>
       </div>
 
       <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
-        <p class="font-medium mb-1">📋 取り込みの流れ</p>
+        <p class="font-medium mb-1">📋 取り込みの流れ（ルール → 繰り返しパターン → AI の 3 段階で判定します）</p>
         <ol class="list-decimal list-inside space-y-0.5">
-          <li>規則ベース判定（既知サービスを高速マッチ）</li>
-          <li>パターン検出（過去取引と照合）</li>
-          <li>AI判定（PR-C で実装予定。今は Tier 1/2 のみ）</li>
+          <li>ルールで判定（既知のサービス名と照合）</li>
+          <li>繰り返しパターンで判定（同じ店・同じ金額の月ごと・年ごとの支払い）</li>
+          <li>AI で判定（1・2 で判定できなかった取引のみ）</li>
           <li>処理完了後、CSV ファイルを削除</li>
         </ol>
       </div>
