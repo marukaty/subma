@@ -1,4 +1,4 @@
-# Phase 4: CSV 取り込みジョブの起動を環境ごとに振り分けるディスパッチャ
+# CSV 取り込みジョブの起動を環境ごとに振り分けるディスパッチャ
 #
 # - dev / test:    Sidekiq に enqueue（既存の ProcessCsvJob.perform_later、変更なし）
 # - production:    Cloud Tasks に HTTP push タスクを enqueue
@@ -6,8 +6,8 @@
 # 本番では Cloud Tasks → Cloud Run 上の Internal::JobsController#process_csv に POST が飛び、
 # 受信側は OIDC ID トークンを検証してから ProcessCsvJob を同期実行する。
 #
-# 本クラスは Phase 4 PR-A の中核で、PR-B（Terraform）/ PR-C（実デプロイ）と組み合わせて
-# Sidekiq + Redis を Cloud Run 単体構成（D-1 構成）に置換するための入り口となる。
+# 本番では Sidekiq + Redis のワーカーを常駐させず、Cloud Run 単体（Web と同じサービス）で
+# 非同期処理を行う。そのための入り口がこのクラス。
 #
 # 必要な環境変数（production のみ）:
 #   GCP_PROJECT_ID         - GCP プロジェクト ID

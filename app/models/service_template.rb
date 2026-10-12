@@ -1,7 +1,7 @@
 # サービステンプレート（マスターデータ）
 # 主要サブスクサービスのデフォルト料金・課金サイクル・カテゴリ・CSV マッチパターンを保持し、
 # ユーザーが手動登録時に「テンプレート選択 → 自動入力」で素早く登録できるようにする。
-# また CSV 取り込み時の Tier 1 規則ベース判定（Phase 3）でも match_patterns が利用される。
+# また CSV 取り込み時の Tier 1 規則ベース判定でも match_patterns が利用される。
 class ServiceTemplate < ApplicationRecord
   enum :default_billing_cycle, {
     monthly: 0,

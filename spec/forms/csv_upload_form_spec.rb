@@ -59,8 +59,8 @@ RSpec.describe CsvUploadForm do
       expect(form_with(sjis)).to be_valid
     end
 
-    it "Windows-31J の機種依存文字（①）を含む CSV も有効" do
-      content = "利用日,利用店名・商品名,利用金額\n2026/04/01,①ショップ,100\n".encode(Encoding::Windows_31J)
+    it "Windows-31J の機種依存文字（①・㈱）を含む CSV も有効" do
+      content = "利用日,利用店名・商品名,利用金額\n2026/04/01,㈱①ショップ,100\n".encode(Encoding::Windows_31J)
       expect(form_with(upload_of(content))).to be_valid
     end
 
@@ -118,7 +118,7 @@ RSpec.describe CsvUploadForm do
     end
   end
 
-  describe "行数の上限（M-7）" do
+  describe "行数の上限" do
     def csv_with_rows(count, blank_lines: 0)
       "利用日,利用店名・商品名,利用金額\n" +
         Array.new(count) { |i| "2026/04/01,SHOP #{i},100\n" }.join +

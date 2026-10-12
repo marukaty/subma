@@ -64,7 +64,7 @@ variable "app_name" {
 }
 
 variable "container_image" {
-  description = "Cloud Run にデプロイするコンテナイメージ。PR-C で実際のイメージタグに差し替える。"
+  description = "Cloud Run にデプロイするコンテナイメージの初期値。以降のイメージはデプロイのワークフローが入れ替える。"
   type        = string
   default     = "gcr.io/cloudrun/hello"
 }

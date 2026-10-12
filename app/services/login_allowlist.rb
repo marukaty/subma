@@ -15,6 +15,8 @@
 # ApplicationController#current_user から毎リクエスト呼ばれ、許可を外したユーザーを締め出す。
 #
 # 詳細: docs/adr/0006-login-allowlist.md
+#
+# [ai-assisted]
 class LoginAllowlist
   ENV_KEY = "ALLOWED_LOGIN_EMAILS".freeze
   WILDCARD = "*".freeze

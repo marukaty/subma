@@ -1,6 +1,6 @@
-# CSV 取り込み済み取引（要件定義書 §4.1 transactions）
-# 抽出フェーズの結果を保持し、PR-C のレビュー画面でユーザーが確認・修正後に
-# Subscription レコードに変換される。
+# CSV から取り込んだ取引。
+# 判定（Tier 1〜3）の結果を保持し、取り込み結果の画面でユーザーが確認・選択したものが
+# Subscription として登録される（CsvImportsController#register）。
 class Transaction < ApplicationRecord
   belongs_to :csv_import
   belongs_to :user

@@ -1,4 +1,4 @@
-# AI（Claude API）に送る行数の上限を管理する（M-7 コスト攻撃対策）。
+# AI（Claude API）に送る行数の上限を管理する（AI 利用料の上限。ADR-0004「利用量の上限」）。
 #
 # 上限は 3 つ。どれも環境変数で変更でき、0 にするとその範囲で AI を使わない。
 # - 取り込み 1 回: AI_MAX_ROWS_PER_IMPORT（既定 300）
@@ -12,6 +12,8 @@
 #
 # 上限を超える分は送らない（呼び出し側が unknown で保存する）。処理全体は失敗させない。
 # 予約した行数は、API 呼び出しが失敗しても戻さない（課金された可能性があり、安全側に倒す）。
+#
+# [ai-assisted]
 class AiUsageLimiter
   DEFAULT_MAX_ROWS_PER_IMPORT = 300
   DEFAULT_MAX_ROWS_PER_USER_PER_DAY = 500

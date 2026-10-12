@@ -1,4 +1,4 @@
-# Phase 1 Task 2: 基本のセキュリティヘッダー
+# 基本のセキュリティヘッダー
 # CSP は Rails native (config/initializers/content_security_policy.rb) に切り出し、
 # chartkick / Rails 標準ヘルパーと nonce の整合性を取れるようにしている。
 # secure_headers では CSP 以外（X-Frame-Options 等）を扱う。

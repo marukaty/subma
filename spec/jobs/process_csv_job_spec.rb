@@ -306,6 +306,32 @@ RSpec.describe ProcessCsvJob, type: :job do
       end
     end
 
+    context "利用店名が列長（255 文字）を超える行・日付欄が異常に長い行がある" do
+      let(:long_csv_path) do
+        path = Rails.root.join("tmp/long_spec_#{SecureRandom.hex(4)}.csv")
+        File.write(path, <<~CSV)
+          "利用日","利用店名・商品名","利用者","支払方法","利用金額","支払手数料","支払総額"
+          "2026/04/20","#{'店' * 300}","本人","1回払い","500","0","500"
+          "#{'2' * 200}","SAMPLE LONG DATE","本人","1回払い","800","0","800"
+          "2026/04/21","SAMPLE STORE","本人","1回払い","800","0","800"
+        CSV
+        path
+      end
+
+      after { FileUtils.rm_f(long_csv_path) }
+
+      it "店名は 255 文字に切って保存し、日付が読めない行だけをスキップして completed になる" do
+        ci = CsvImport.create!(user: user, filename: "long.csv", format: :rakuten, status: :uploading)
+        ci.file.attach(io: File.open(long_csv_path), filename: "long.csv", content_type: "text/csv")
+
+        expect(described_class.new.perform(ci.id)).to eq(:completed)
+
+        ci.reload
+        expect(ci.original_row_count).to eq(2)
+        expect(ci.transactions.pluck(:description)).to contain_exactly("店" * 255, "SAMPLE STORE")
+      end
+    end
+
     context "when an error occurs in pipeline" do
       before do
         allow(Csv::Parser).to receive(:new).and_raise(ArgumentError, "boom")
@@ -360,7 +386,7 @@ RSpec.describe ProcessCsvJob, type: :job do
       end
     end
 
-    describe "AI 利用量の上限（M-7）" do
+    describe "AI 利用量の上限" do
       let(:subscription_names) { [] }
       let(:fake_client) { FakeAnthropicClient.new(subscriptions: subscription_names) }
       let(:csv_files) { [] }
