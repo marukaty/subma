@@ -271,7 +271,7 @@ RSpec.describe Classifiers::AiClassifier do
       end
     end
 
-    describe "同じ店名・金額の行をまとめて送る（M-7）" do
+    describe "同じ店名・金額の行をまとめて送る" do
       let(:fake) { FakeAnthropicClient.new(subscriptions: [ "AMAZON PRIME" ]) }
       let(:classifier) { described_class.new(client: fake) }
 

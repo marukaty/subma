@@ -9,9 +9,8 @@ labels: enhancement
 
 何を実現したいか / 何のタスクか
 
-## 該当 Phase / 要件 ID
+## 関連する要件
 
-- Phase:
 - 要件 ID（F-XX, US-XX, NFR-X-XX 等）:
 
 ## 受け入れ条件（Acceptance Criteria）

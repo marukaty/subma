@@ -1,6 +1,6 @@
 # Sidekiq 設定（NFR-I-04: 非同期処理）
 # Redis URL は ENV["REDIS_URL"] から取得
-# Phase 4 で Cloud Tasks への切り替えを ADR-0003 で検討予定
+# development / test 用。本番は Cloud Tasks を使う（ADR-0003 の追記）
 
 redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
 

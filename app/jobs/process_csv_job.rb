@@ -1,4 +1,4 @@
-# Phase 3: CSV 取り込みパイプライン（Tier 1 + Tier 2 + Tier 3）
+# CSV 取り込みパイプライン（Tier 1 + Tier 2 + Tier 3）
 #
 # パイプライン:
 #   0. 処理権を取る（uploading → processing。ADR-0007）
@@ -7,7 +7,7 @@
 #   3. Tier 1 RuleClassifier で確定できる行を分類（confidence 1.0）
 #   4. Tier 2 PatternClassifier で候補を絞り込み（confidence 0.7）
 #   5. Tier 3 AiClassifier で残りを Claude API で判定（NFR-S-10 PII マスキング）
-#      AI に送る行数には上限がある（M-7。AiUsageLimiter）。超えた分は AI に送らず unknown で保存し、
+#      AI に送る行数には上限がある（AiUsageLimiter。ADR-0004「利用量の上限」）。超えた分は AI に送らず unknown で保存し、
 #      件数を ai_skipped_count に残す（処理は失敗させない）
 #   6. Transaction レコードを作り直す（既存分を消してから保存。同じ DB トランザクション内）
 #   7. CsvImport.status を completed に（matched_count = サブスクと判定した件数、skipped_duplicate_count、

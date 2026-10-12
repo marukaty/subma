@@ -1,4 +1,4 @@
-# 利用量の上限（M-7）の環境変数を example ごとに退避・復元する。
+# 利用量の上限（ADR-0004）の環境変数を example ごとに退避・復元する。
 # 上限を変えて確かめる example では with_limit_env で上書きする。
 module UsageLimitEnvHelper
   USAGE_LIMIT_ENV_KEYS = %w[

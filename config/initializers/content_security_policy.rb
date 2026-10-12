@@ -1,6 +1,5 @@
 # Rails native CSP 設定（NFR-S-04）
-# Phase 1 では Firebase / Google SSO / Chartkick (esm.sh) の依存を許可
-# Phase 5 で厳密化予定
+# Firebase / Google SSO / Chartkick (esm.sh) の読み込みを許可する
 
 Rails.application.configure do
   config.content_security_policy do |policy|

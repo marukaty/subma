@@ -1,6 +1,6 @@
 # プロバイダ設定 + 共通ローカル変数
 #
-# state backend は GCS。バケットは事前に手動で作成する必要あり（PR-C の手動作業）。
+# state backend は GCS。バケットは事前に手動で作成する必要あり（初回のみの手動作業）。
 # 「Terraform で state バケット自体を作る」と循環依存になるため。
 #
 # [ai-assisted]
@@ -53,8 +53,8 @@ resource "google_project_service" "required_apis" {
     "iamcredentials.googleapis.com",    # Service Account 短期トークン発行
     "artifactregistry.googleapis.com",  # コンテナイメージ Repo
     "cloudbuild.googleapis.com",        # （将来的にビルド時に使う場合）
-    "firestore.googleapis.com",         # Firestore（v2 用、PR-B では定義のみ）
-    "cloudscheduler.googleapis.com",    # Cloud Scheduler（v2 用、PR-B では定義のみ）
+    "firestore.googleapis.com",         # Firestore（v2 用。現在アプリからは使っていない）
+    "cloudscheduler.googleapis.com",    # Cloud Scheduler（v2 用。現在ジョブは無い）
     "storage.googleapis.com",           # Cloud Storage
     "compute.googleapis.com",           # ネットワーク／VPC（Cloud SQL connector 用）
     "servicenetworking.googleapis.com", # Cloud SQL private IP（必要に応じて）
@@ -68,7 +68,7 @@ resource "google_project_service" "required_apis" {
 }
 
 # ---------- Artifact Registry（コンテナイメージ置き場） ----------
-# PR-C でビルド済みイメージをここに push する。
+# デプロイのワークフロー（deploy.yml）がビルドしたイメージをここに push する。
 
 resource "google_artifact_registry_repository" "subma" {
   location      = var.region

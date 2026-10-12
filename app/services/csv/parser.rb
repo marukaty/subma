@@ -7,7 +7,7 @@ module Csv
   class Parser
     ADAPTERS = {
       "rakuten" => Csv::Adapters::RakutenAdapter
-      # PR-B 以降で smcc / jcb / aeon / mufg / generic を追加
+      # 他のカード会社は BaseAdapter のサブクラスを作り、ここに追加する
     }.freeze
 
     class UnsupportedFormatError < StandardError; end

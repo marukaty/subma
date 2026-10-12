@@ -45,7 +45,8 @@ module Subma
     # Don't generate system test files.
     config.generators.system_tests = nil
 
-    # ActiveJob のバックエンドに Sidekiq を採用（Phase 3 ProcessCsvJob 等）
+    # ActiveJob のバックエンドは Sidekiq（development / test で ProcessCsvJob を非同期実行）。
+    # 本番の CSV 取り込みは CsvProcessingDispatcher が Cloud Tasks 経由で起動する
     config.active_job.queue_adapter = :sidekiq
 
     # Active Storage はサーバー側で CSV を attach して処理後に purge するだけで、

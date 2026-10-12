@@ -118,7 +118,7 @@ RSpec.describe CsvUploadForm do
     end
   end
 
-  describe "行数の上限（M-7）" do
+  describe "行数の上限" do
     def csv_with_rows(count, blank_lines: 0)
       "利用日,利用店名・商品名,利用金額\n" +
         Array.new(count) { |i| "2026/04/01,SHOP #{i},100\n" }.join +

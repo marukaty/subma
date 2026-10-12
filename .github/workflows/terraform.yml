@@ -1,7 +1,7 @@
 name: Terraform
 
 # infra/terraform 配下の .tf に対して、PR 時に fmt と validate を実行する。
-# 実 plan / apply は GCP 認証が必要なため PR-C で別ワークフローとして追加する。
+# plan / apply は GCP の認証が必要なため、このワークフローでは実行しない。
 
 on:
   pull_request:

@@ -30,7 +30,7 @@ class CsvImportsController < ApplicationController
     csv_import.file.attach(@upload.attachable)
     @audit_resource = csv_import
 
-    # Phase 4: 直接 ProcessCsvJob.perform_later を呼ばず、ディスパッチャ経由にする
+    # ProcessCsvJob.perform_later を直接呼ばず、ディスパッチャ経由で起動する
     # （dev/test=Sidekiq、production=Cloud Tasks）
     CsvProcessingDispatcher.dispatch(csv_import)
 

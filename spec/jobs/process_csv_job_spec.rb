@@ -386,7 +386,7 @@ RSpec.describe ProcessCsvJob, type: :job do
       end
     end
 
-    describe "AI 利用量の上限（M-7）" do
+    describe "AI 利用量の上限" do
       let(:subscription_names) { [] }
       let(:fake_client) { FakeAnthropicClient.new(subscriptions: subscription_names) }
       let(:csv_files) { [] }

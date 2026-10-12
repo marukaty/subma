@@ -25,7 +25,7 @@ Rails.application.routes.draw do
   # CSV 取り込み
   resources :csv_imports, only: [ :index, :new, :create, :show ] do
     member do
-      post :register  # PR-C: 抽出結果レビュー → Subscription 一括登録
+      post :register  # 取り込み結果の確認 → Subscription 一括登録
     end
     # 失敗した取り込みの再処理（ADR-0007）
     resource :retry, only: [ :create ], module: :csv_imports
@@ -36,17 +36,15 @@ Rails.application.routes.draw do
   # 退会（アカウントとすべてのデータを削除）
   delete "settings/account" => "settings#destroy_account", as: :settings_account
 
-  # Phase 4: Cloud Tasks からの HTTP push 受信エンドポイント（OIDC 検証必須）
+  # Cloud Tasks からの HTTP push 受信エンドポイント（OIDC 検証必須）
   namespace :internal do
     post "jobs/process_csv" => "jobs#process_csv", as: :jobs_process_csv
   end
 
   # ルート
   root to: redirect { |_, req|
-    # NOTE: redirect の中で session を直接見る方法はないため、
-    # ApplicationController の root へ寄せる方が正攻法だが、シンプル運用として
-    # 未ログインなら /login、ログイン済みなら /dashboard へ静的に振り分けるのは
-    # 後の Phase 2 で対応。ここでは /dashboard へ送り、認証必須で /login にリダイレクト。
+    # redirect の中では session を見られないため、常に /dashboard へ送る。
+    # 未ログインなら /dashboard の認証で /login にリダイレクトされる。
     "/dashboard"
   }
 end

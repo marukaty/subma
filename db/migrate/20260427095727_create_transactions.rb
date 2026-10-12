@@ -6,7 +6,7 @@ class CreateTransactions < ActiveRecord::Migration[8.1]
       t.date :transaction_date, null: false
       t.decimal :amount, precision: 10, scale: 2, null: false
       t.string :description, null: false, limit: 255
-      # 抽出済みサブスクとのリンク（PR-C のレビュー画面で関連付け、最初は null）
+      # 抽出済みサブスクとのリンク（取り込み結果の画面で登録したときに関連付け、最初は null）
       t.references :matched_subscription,
                    foreign_key: { to_table: :subscriptions },
                    null: true

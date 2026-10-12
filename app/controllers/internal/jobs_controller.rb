@@ -1,4 +1,4 @@
-# Phase 4: Cloud Tasks からの HTTP push を受信して非同期ジョブを実行するエンドポイント
+# Cloud Tasks からの HTTP push を受信して非同期ジョブを実行するエンドポイント
 #
 # 設計:
 #   - Cloud Tasks → Cloud Run (本コントローラ) に POST が飛ぶ
