@@ -1,25 +1,26 @@
 # SubMa Infrastructure (Terraform)
 
-SubMa の本番インフラ（GCP D-1 構成）を Terraform で管理する。
+SubMa の本番インフラ（Google Cloud の Cloud Run 単体構成）を Terraform で管理する。
 
 ## 構成
 
 ```
 infra/terraform/
 ├── versions.tf          # Terraform / プロバイダのバージョン固定
-├── variables.tf         # 入力変数（project_id、秘密値など）
+├── variables.tf         # 入力変数（project_id、Firebase の公開値など。秘密値は持たない）
 ├── main.tf              # プロバイダ設定 + state backend + 必要 API 有効化 + Artifact Registry
 ├── iam.tf               # Service Account 3 つ + Workload Identity Federation
 ├── cloud_sql.tf         # MySQL 8.0 (db-f1-micro)
 ├── cloud_storage.tf     # CSV 一時保存バケット（1 日後自動削除）
-├── secret_manager.tf    # 秘密値（RAILS_MASTER_KEY 等）
+├── secret_manager.tf    # Secret の器と accessor 権限（値は gcloud で投入）
 ├── cloud_tasks.tf       # process-csv キュー
 ├── cloud_run.tf         # subma-web サービス
-├── firestore.tf         # Firestore database（v2 用、定義のみ）
-└── cloud_scheduler.tf   # 引落リマインド（v2 用、コメントスケッチ）
+├── cloud_run_jobs.tf    # DB マイグレーション用の Cloud Run Job
+├── firestore.tf         # Firestore database（作成のみ。アプリからは未使用）
+└── cloud_scheduler.tf   # リソースなし（コメントのみ）
 ```
 
-## アーキテクチャ概要（D-1 構成）
+## アーキテクチャ概要
 
 ```
 [ User Browser ]
@@ -35,11 +36,11 @@ infra/terraform/
 [ GitHub Actions ] ─OIDC─→ [ Workload Identity Federation ] ─assume─→ [ deployer SA ]
 ```
 
-**月額目安**: $8〜17（Cloud SQL $7-10 + Cloud Run $0-3 + Anthropic $1-5）
+**月額目安**: GCP 分は ~$10〜13（内訳は `docs/infrastructure-notes.md` 7.1）。Claude API は別請求で、アプリ側の上限により 1 日あたり数ドルまで
 
 ## 初回セットアップ手順（手動作業）
 
-PR-B のコードがマージされた後、本番に初めて適用する流れ。
+本番に初めて適用する流れ。`<PROJECT_ID>` は使う GCP プロジェクトの ID に置き換える。
 
 ### 0. 前提
 
@@ -51,8 +52,8 @@ PR-B のコードがマージされた後、本番に初めて適用する流れ
 
 ```bash
 # プロジェクト作成（ID は変更可、以下例）
-gcloud projects create subma-prod --name="SubMa Production"
-gcloud config set project subma-prod
+gcloud projects create <PROJECT_ID> --name="SubMa Production"
+gcloud config set project <PROJECT_ID>
 
 # 課金アカウントを紐付け（GCP コンソールで実施するのが楽）
 
@@ -82,13 +83,13 @@ gcloud iam service-accounts create subma-bootstrap \
   --display-name="SubMa initial bootstrap"
 
 # プロジェクトオーナー権限を一時付与（apply 後に削除）
-gcloud projects add-iam-policy-binding subma-prod \
-  --member="serviceAccount:subma-bootstrap@subma-prod.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:subma-bootstrap@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/owner"
 
 # 認証ファイル取得（初回 apply 後に削除推奨）
 gcloud iam service-accounts keys create ~/.subma-bootstrap.json \
-  --iam-account=subma-bootstrap@subma-prod.iam.gserviceaccount.com
+  --iam-account=subma-bootstrap@<PROJECT_ID>.iam.gserviceaccount.com
 
 export GOOGLE_APPLICATION_CREDENTIALS=~/.subma-bootstrap.json
 ```
@@ -98,10 +99,13 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/.subma-bootstrap.json
 ```bash
 cd infra/terraform
 cat > terraform.tfvars <<'EOF'
-project_id            = "subma-prod"
-github_repository     = "OWNER/subma"
-firebase_project_id   = "subma-xxxxx"
-firebase_auth_domain  = "subma-xxxxx.firebaseapp.com"
+project_id             = "<PROJECT_ID>"
+github_repository      = "OWNER/subma"
+firebase_project_id    = "<FIREBASE_PROJECT_ID>"
+firebase_auth_domain   = "<FIREBASE_PROJECT_ID>.firebaseapp.com"
+firebase_app_id        = "<FIREBASE_APP_ID>"
+# 初回は仮の URL を入れ、手順 7 で確定した URL に置き換える
+cloud_tasks_target_url = "https://example.invalid/internal/jobs/process_csv"
 EOF
 
 # tfvars はリポジトリにコミットしない（.gitignore 済み）
@@ -141,7 +145,7 @@ terraform apply plan.out
 rm ~/.subma-bootstrap.json
 unset GOOGLE_APPLICATION_CREDENTIALS
 
-# 以降は WIF 経由で GitHub Actions が deployer SA を assume してデプロイする（PR-C で構築）
+# 以降は WIF 経由で GitHub Actions が deployer SA を assume してデプロイする（.github/workflows/deploy.yml）
 ```
 
 ### 7. CLOUD_TASKS_TARGET_URL の更新
@@ -160,21 +164,21 @@ gcloud run services update subma-web \
   --update-env-vars=CLOUD_TASKS_TARGET_URL=https://subma-web-xxxxxxxxxx-an.a.run.app/internal/jobs/process_csv
 ```
 
-このループは PR-C で自動化する（Terraform を二段階 apply するか、デプロイスクリプトで上書きするか）。
+確定した URL は terraform.tfvars の `cloud_tasks_target_url` にも反映し、もう一度 `terraform apply` する（`APP_HOST` もこの URL のホスト部分から作られる）。
 
-## 通常運用（PR-C 完了後）
+## 通常運用
 
 - インフラ変更は PR で行う
-- PR 作成時に GitHub Actions が `terraform plan` を自動実行（コメント形式で結果を貼る）
-- main ブランチへのマージで `terraform apply` が自動実行される
+- PR では GitHub Actions（`.github/workflows/terraform.yml`）が `terraform fmt -check` と `terraform validate` を実行する
+- `terraform plan` / `apply` は運用者が手元で実行する（CI は GCP のインフラ変更権限を持たない）
 
 ## 運用上の注意
 
 - **Cloud SQL deletion_protection が有効**。インスタンス削除には先に `deletion_protection = false` に変更して apply してから削除すること
-- **Secret Manager の Secret 値変更**: Terraform で `secret_data` を更新して apply すると新バージョンが作成される（古いバージョンは無効化）
+- **Secret Manager の Secret 値変更**: Terraform では行わない。`gcloud secrets versions add` で新しい版を追加し、Cloud Run の新しいリビジョンを作って反映する（`docs/infrastructure-notes.md` 8.9）
 - **state バケットの versioning** が有効なので、誤って削除しても復元可能
 
 ## 参考
 
-- ADR-0003 CSV 処理パイプライン（Phase 4 追記: Cloud Tasks 採択）
-- Issue #17 Phase 4 全体計画
+- ADR-0003 CSV 処理パイプライン（追記: 本番は Cloud Tasks）
+- `docs/infrastructure-notes.md`（構成・権限・運用手順）
