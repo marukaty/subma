@@ -53,7 +53,7 @@ gem "rspec-rails", "~> 8.0", groups: [ :development, :test ]
 gem "capybara", "~> 3.40", groups: [ :development, :test ]
 gem "selenium-webdriver", "~> 4.44", groups: [ :development, :test ]
 
-gem "jwt", "~> 3.2"
+gem "jwt", "~> 3.3"
 gem "importmap-rails", "~> 2.2"
 gem "rack-attack", "~> 6.8"
 gem "secure_headers", "~> 7.2"
