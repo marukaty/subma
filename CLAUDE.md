@@ -10,7 +10,7 @@ Claude Code などの AI 支援ツールと人が共通で守る、このリポ�
 | Ruby | 3.4.5 |
 | Web フレームワーク | Rails 8.1 |
 | フロント | Hotwire（Turbo + Stimulus）+ importmap + Tailwind CSS |
-| DB | MySQL 8.0（本番は Cloud SQL） |
+| DB | MySQL 8.4（本番は Cloud SQL） |
 | 認証 | Firebase Auth（Google SSO）+ Rails 側での ID トークン検証、ログイン許可リスト |
 | ファイル保管 | Active Storage（本番は Cloud Storage、開発・テストはローカルディスク） |
 | 非同期処理 | 本番は Cloud Tasks → Cloud Run の内部エンドポイント。開発・テストは Sidekiq + Redis |

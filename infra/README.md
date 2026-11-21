@@ -10,7 +10,7 @@ infra/terraform/
 ├── variables.tf         # 入力変数（project_id、Firebase の公開値など。秘密値は持たない）
 ├── main.tf              # プロバイダ設定 + state backend + 必要 API 有効化 + Artifact Registry
 ├── iam.tf               # Service Account 3 つ + Workload Identity Federation
-├── cloud_sql.tf         # MySQL 8.0 (db-f1-micro)
+├── cloud_sql.tf         # MySQL 8.4 (db-f1-micro)
 ├── cloud_storage.tf     # CSV 一時保存バケット（1 日後自動削除）
 ├── secret_manager.tf    # Secret の器と accessor 権限（値は gcloud で投入）
 ├── cloud_tasks.tf       # process-csv キュー

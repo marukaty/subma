@@ -35,7 +35,7 @@ graph TB
       Service[subma-web<br/>Rails 8.1 / Puma<br/>min=0 max=3]
       Job[subma-web-migrate<br/>db:prepare Job]
     end
-    SQL[(Cloud SQL<br/>MySQL 8.0<br/>db-f1-micro)]
+    SQL[(Cloud SQL<br/>MySQL 8.4<br/>db-f1-micro)]
     Storage[Cloud Storage<br/>CSV 一時]
     SM[Secret Manager<br/>master_key / API keys]
     Tasks[Cloud Tasks<br/>process-csv queue]
@@ -142,7 +142,7 @@ graph TB
 | 項目 | 値 |
 |---|---|
 | インスタンス | `subma-prod` |
-| エンジン | MySQL 8.0 |
+| エンジン | MySQL 8.4 |
 | Tier | `db-f1-micro`（共有 CPU + 0.6GB RAM）|
 | Disk | PD-SSD 10GB（autoresize=true）|
 | Availability | ZONAL（個人開発規模、月 ~$10）|
