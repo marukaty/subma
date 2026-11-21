@@ -1,4 +1,4 @@
-# Cloud SQL (MySQL 8.0) インスタンス + データベース + ユーザー
+# Cloud SQL (MySQL 8.4) インスタンス + データベース + ユーザー
 #
 # 設計:
 #   - db-f1-micro（個人開発規模には十分、$7-10/月）
@@ -25,7 +25,7 @@ resource "random_password" "cloud_sql_app" {
 
 resource "google_sql_database_instance" "main" {
   name             = "${var.app_name}-${var.environment}"
-  database_version = "MYSQL_8_0"
+  database_version = "MYSQL_8_4"
   region           = var.region
 
   settings {

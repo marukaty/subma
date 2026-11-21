@@ -16,7 +16,7 @@ graph LR
   Auth[Firebase Auth<br/>Google SSO]
   subgraph GCP["Google Cloud"]
     Run[Cloud Run<br/>Rails 8.1 / Puma]
-    SQL[(Cloud SQL<br/>MySQL 8.0)]
+    SQL[(Cloud SQL<br/>MySQL 8.4)]
     GCS[Cloud Storage<br/>CSV 一時保管・1 日で削除]
     SM[Secret Manager]
     Tasks[Cloud Tasks<br/>process-csv]
@@ -44,7 +44,7 @@ graph LR
 |---|---|
 | 言語・フレームワーク | Ruby 3.4.5 / Rails 8.1 |
 | フロントエンド | Hotwire（Turbo + Stimulus）、importmap、Tailwind CSS、Chartkick |
-| DB | MySQL 8.0（本番は Cloud SQL） |
+| DB | MySQL 8.4（本番は Cloud SQL） |
 | 認証 | Firebase Auth（Google SSO）。ID トークンは Rails 側で自前検証（RS256・iss・aud・exp・iat・sub。[ADR-0001](./docs/adr/0001-firebase-auth-strategy.md)） |
 | ファイル保管 | Active Storage（本番は Cloud Storage、開発・テストはローカルディスク） |
 | 非同期処理 | 本番は Cloud Tasks。開発・テストは Sidekiq + Redis（[ADR-0003](./docs/adr/0003-csv-processing-pipeline.md)） |
