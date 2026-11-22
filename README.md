@@ -42,7 +42,7 @@ graph LR
 
 | 領域 | 採用 |
 |---|---|
-| 言語・フレームワーク | Ruby 3.4.5 / Rails 8.1 |
+| 言語・フレームワーク | Ruby 3.4.13 / Rails 8.1 |
 | フロントエンド | Hotwire（Turbo + Stimulus）、importmap、Tailwind CSS、Chartkick |
 | DB | MySQL 8.0（本番は Cloud SQL） |
 | 認証 | Firebase Auth（Google SSO）。ID トークンは Rails 側で自前検証（RS256・iss・aud・exp・iat・sub。[ADR-0001](./docs/adr/0001-firebase-auth-strategy.md)） |

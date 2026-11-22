@@ -7,7 +7,7 @@ Claude Code などの AI 支援ツールと人が共通で守る、このリポ�
 
 | 項目 | 採用 |
 |---|---|
-| Ruby | 3.4.5 |
+| Ruby | 3.4.13 |
 | Web フレームワーク | Rails 8.1 |
 | フロント | Hotwire（Turbo + Stimulus）+ importmap + Tailwind CSS |
 | DB | MySQL 8.0（本番は Cloud SQL） |
